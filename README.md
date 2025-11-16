@@ -7,6 +7,16 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/homeport/termshot.svg)](https://pkg.go.dev/github.com/homeport/termshot)
 [![Release](https://img.shields.io/github/release/homeport/termshot.svg)](https://github.com/homeport/termshot/releases/latest)
 
+## Fork Improvements
+
+This fork adds several enhancements:
+- **8 built-in themes** (catppuccin-mocha, nord, dracula, etc.) + custom theme support
+- **Shell configuration** support (--shell, --shell-config, --shell-opts) for custom prompts
+- **Improved ANSI parsing** with virtual terminal for better cursor handling (powerlevel10k compatible)
+- **Syntax highlighting** for shell commands with customizable prompts
+- **--no-prompt-detect** flag for interactive shells with autosuggestions
+- **True RGB color** preservation from modern terminals
+
 Generate beautiful screenshots of your terminal, from your terminal.
 
 ```sh
@@ -73,6 +83,46 @@ Do not draw window decorations (minimize, maximize, and close button).
 
 Do not draw window shadow.
 
+#### `--theme`
+
+Specify a color theme for the terminal screenshot. Built-in themes include:
+- `default` - Default theme
+- `catppuccin-mocha` - Catppuccin Mocha theme
+- `catppuccin-latte` - Catppuccin Latte theme
+- `nord` - Nord theme
+- `dracula` - Dracula theme
+- `tokyo-night` - Tokyo Night theme
+- `gruvbox-dark` - Gruvbox Dark theme
+- `solarized-dark` - Solarized Dark theme
+
+```sh
+termshot --theme catppuccin-mocha -- "ls -a"
+```
+
+#### `--theme-file`
+
+Load a custom theme from a JSON file. The JSON file should define colors for background, foreground, window decorations, and ANSI colors.
+
+```sh
+termshot --theme-file my-theme.json -- "ls -a"
+```
+
+#### `--prompt`
+
+Customize the command prompt indicator (default is "➜").
+
+```sh
+termshot --show-cmd --prompt "❯" -- "ls -a"
+```
+
+#### `--syntax-highlight`
+
+Enable syntax highlighting for the command line. When enabled, commands, keywords, flags, strings, and other tokens are colorized.
+
+```sh
+termshot --show-cmd --syntax-highlight -- "docker ps -a | grep running"
+```
+
 ### Flags for output related settings
 
 #### `--clipboard`/`-b` (only on selected platforms)
@@ -90,6 +140,32 @@ termshot -- "ls -a" # defaults to <cwd>/out.png
 termshot --filename my-image.png -- "ls -a"
 termshot --filename screenshots/my-image.png -- "ls -a"
 termshot --filename /Desktop/my-image.png -- "ls -a"
+```
+
+### Flags for shell configuration
+
+#### `--shell`
+
+Specify a custom shell to use for command execution (e.g., `/bin/zsh`, `/bin/bash`).
+
+```sh
+termshot --shell /bin/zsh -- "ls -a"
+```
+
+#### `--shell-config`
+
+Specify a shell configuration file to source before running the command (e.g., `~/.zshrc`, `~/.bashrc`). This is useful for loading custom prompts like powerlevel10k.
+
+```sh
+termshot --shell /bin/zsh --shell-config ~/.zshrc -- "ls -a"
+```
+
+#### `--shell-opts`
+
+Specify additional shell options as a comma-separated list.
+
+```sh
+termshot --shell /bin/zsh --shell-opts "-i,-l" -- "ls -a"
 ```
 
 ### Flags to control content
@@ -112,6 +188,14 @@ Write command output as-is into the file that is specified as the flag argument.
 
 Read input from provided file instead of running a command. If this flag is being used, no pseudo terminal is being created to execute a command. The command-line flags `--show-cmd`, and `--edit` have no effect, when `--raw-read` is used.
 
+#### `--improved-ansi`
+
+Enable improved ANSI parser with better cursor handling (enabled by default). This helps with prompts that use cursor positioning like powerlevel10k.
+
+```sh
+termshot --improved-ansi -- "ls -a"
+```
+
 #### `--version`/`-v`
 
 Print the version of `termshot` installed.
@@ -129,4 +213,57 @@ In order to work, `termshot` uses a pseudo terminal for the command to be execut
 termshot /bin/zsh
 ```
 
-> _Please note:_ This project is work in progress. Although a lot of the ANSI sequences can be parsed, there are definitely commands in existence that create output that cannot be parsed correctly, yet. Also, commands that reset the cursor position are known to create issues.
+> _Please note:_ This project is work in progress. The improved ANSI parser now handles most cursor positioning sequences, including those used by powerlevel10k and similar prompts. You can customize the appearance with themes, custom prompts, and syntax highlighting.
+
+## Advanced Examples
+
+### Using with ZSH and powerlevel10k
+
+```sh
+termshot --shell /bin/zsh --shell-config ~/.zshrc --theme catppuccin-mocha --show-cmd -- "git status"
+```
+
+### Custom prompt and syntax highlighting
+
+```sh
+termshot --show-cmd --prompt "❯" --syntax-highlight -- "docker ps -a | grep running"
+```
+
+### Creating a custom theme
+
+Create a JSON file (e.g., `my-theme.json`):
+
+```json
+{
+  "name": "My Theme",
+  "background": "#1e1e2e",
+  "foreground": "#cdd6f4",
+  "window_red": "#f38ba8",
+  "window_yellow": "#f9e2af",
+  "window_green": "#a6e3a1",
+  "window_border": "#45475a",
+  "shadow": "#11111b66",
+  "black": "#45475a",
+  "red": "#f38ba8",
+  "green": "#a6e3a1",
+  "yellow": "#f9e2af",
+  "blue": "#89b4fa",
+  "magenta": "#f5c2e7",
+  "cyan": "#94e2d5",
+  "white": "#bac2de",
+  "bright_black": "#585b70",
+  "bright_red": "#f38ba8",
+  "bright_green": "#a6e3a1",
+  "bright_yellow": "#f9e2af",
+  "bright_blue": "#89b4fa",
+  "bright_magenta": "#f5c2e7",
+  "bright_cyan": "#94e2d5",
+  "bright_white": "#a6adc8"
+}
+```
+
+Then use it:
+
+```sh
+termshot --theme-file my-theme.json -- "ls -la"
+```

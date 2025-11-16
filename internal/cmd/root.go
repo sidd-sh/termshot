@@ -31,8 +31,10 @@ import (
 	"github.com/gonvenience/bunt"
 	"github.com/gonvenience/neat"
 
+	"github.com/homeport/termshot/internal/ansi"
 	"github.com/homeport/termshot/internal/img"
 	"github.com/homeport/termshot/internal/ptexec"
+	"github.com/homeport/termshot/internal/theme"
 
 	"github.com/spf13/cobra"
 )
@@ -79,6 +81,53 @@ window including all terminal colors and text decorations.
 		var scaffold = img.NewImageCreator()
 		var buf bytes.Buffer
 		var pt = ptexec.New()
+
+		// Load theme
+		themeName, _ := cmd.Flags().GetString("theme")
+		themeFile, _ := cmd.Flags().GetString("theme-file")
+		
+		var selectedTheme theme.Theme
+		if themeFile != "" {
+			loadedTheme, err := theme.LoadThemeFromFile(themeFile)
+			if err != nil {
+				return fmt.Errorf("failed to load theme file: %w", err)
+			}
+			selectedTheme = loadedTheme
+		} else {
+			selectedTheme = theme.GetTheme(themeName)
+		}
+		
+		// Apply theme to scaffold
+		scaffold.SetTheme(selectedTheme)
+
+		// Check for custom prompt
+		customPrompt, _ := cmd.Flags().GetString("prompt")
+		if customPrompt != "" {
+			scaffold.SetPrompt(customPrompt)
+		}
+
+		// Check for syntax highlighting
+		syntaxHighlight, _ := cmd.Flags().GetBool("syntax-highlight")
+		scaffold.EnableSyntaxHighlighting(syntaxHighlight)
+
+		// Check for prompt detection
+		noPromptDetect, _ := cmd.Flags().GetBool("no-prompt-detect")
+		scaffold.DisablePromptDetection(noPromptDetect)
+
+		// Configure shell if specified
+		shellPath, _ := cmd.Flags().GetString("shell")
+		shellConfig, _ := cmd.Flags().GetString("shell-config")
+		shellOpts, _ := cmd.Flags().GetStringSlice("shell-opts")
+		
+		if shellPath != "" {
+			pt.SetShell(shellPath)
+		}
+		if shellConfig != "" {
+			pt.SetShellConfig(shellConfig)
+		}
+		if len(shellOpts) > 0 {
+			pt.SetShellOpts(shellOpts)
+		}
 
 		// Initialise scaffold with a column sizing so that the
 		// content can be wrapped accordingly
@@ -165,6 +214,23 @@ window including all terminal colors and text decorations.
 
 			buf.Reset()
 			buf.Write(bytes)
+		}
+
+		// Use improved ANSI parser if enabled
+		improvedANSI, _ := cmd.Flags().GetBool("improved-ansi")
+		if improvedANSI && rawRead != "" {
+			// Only use improved parser for raw-read files, not for live commands
+			columns := scaffold.GetFixedColumns()
+			vt := ansi.NewVirtualTerminal(columns)
+			parsed, err := vt.Parse(&buf)
+			if err != nil {
+				// If parsing fails, continue with original content
+				fmt.Fprintf(os.Stderr, "Warning: ANSI parsing failed, using original content: %v\n", err)
+			} else {
+				// Replace buffer content with parsed output
+				buf.Reset()
+				buf.WriteString(parsed.String())
+			}
 		}
 
 		// Add the captured output to the scaffold
@@ -292,12 +358,29 @@ func init() {
 	rootCmd.Flags().Bool("no-shadow", false, "do not draw window shadow")
 	rootCmd.Flags().BoolP("clip-canvas", "s", false, "clip canvas to visible image area (no margin)")
 
+	// flags for shell configuration
+	rootCmd.Flags().String("shell", "", "shell to use for command execution (e.g., /bin/zsh, /bin/bash)")
+	rootCmd.Flags().String("shell-config", "", "shell configuration file to source (e.g., ~/.zshrc)")
+	rootCmd.Flags().StringSlice("shell-opts", []string{}, "additional shell options")
+
+	// flags for theming
+	rootCmd.Flags().String("theme", "default", "color theme to use (default, catppuccin-mocha, nord, dracula, tokyo-night, gruvbox-dark, solarized-dark)")
+	rootCmd.Flags().String("theme-file", "", "path to custom theme JSON file")
+
+	// flags for prompt customization
+	rootCmd.Flags().String("prompt", "", "custom prompt string (overrides default)")
+	rootCmd.Flags().Bool("syntax-highlight", false, "enable syntax highlighting for command")
+
 	// flags for output related settings
 	rootCmd.Flags().StringP("filename", "f", "out.png", "filename of the screenshot")
 
 	// flags for raw output processing
 	rootCmd.Flags().String("raw-write", "", "write raw output to file instead of creating a screenshot")
 	rootCmd.Flags().String("raw-read", "", "read raw input from file instead of executing a command")
+
+	// flags for cursor handling
+	rootCmd.Flags().Bool("improved-ansi", false, "use improved ANSI parser with cursor handling (only for --raw-read)")
+	rootCmd.Flags().Bool("no-prompt-detect", false, "disable automatic prompt detection and command highlighting")
 
 	// internals
 	rootCmd.Flags().BoolP("version", "v", false, "show version")

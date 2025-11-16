@@ -41,7 +41,9 @@ type PseudoTerminal struct {
 	name string
 	args []string
 
-	shell string
+	shell       string
+	shellConfig string
+	shellOpts   []string
 
 	cols   uint16
 	rows   uint16
@@ -84,6 +86,24 @@ func (c *PseudoTerminal) Command(name string, args ...string) *PseudoTerminal {
 	return c
 }
 
+// SetShell sets a custom shell path
+func (c *PseudoTerminal) SetShell(shell string) *PseudoTerminal {
+	c.shell = shell
+	return c
+}
+
+// SetShellConfig sets a shell configuration file to source
+func (c *PseudoTerminal) SetShellConfig(config string) *PseudoTerminal {
+	c.shellConfig = config
+	return c
+}
+
+// SetShellOpts sets additional shell options
+func (c *PseudoTerminal) SetShellOpts(opts []string) *PseudoTerminal {
+	c.shellOpts = opts
+	return c
+}
+
 // Run runs the provided command/script with the given arguments in a pseudo
 // terminal (PTY) so that the behavior is the same if it would be executed
 // in a terminal
@@ -95,13 +115,39 @@ func (c *PseudoTerminal) Run() ([]byte, error) {
 	// Convenience hack in case command contains a space, for example in case
 	// typical construct like "foo | grep" are used.
 	if strings.Contains(c.name, " ") {
-		c.args = []string{
-			"-c",
-			strings.Join(append(
-				[]string{c.name},
-				c.args...,
-			), " "),
+		shellCmd := strings.Join(append(
+			[]string{c.name},
+			c.args...,
+		), " ")
+		
+		// If shell config is specified, source it first
+		if c.shellConfig != "" {
+			shellCmd = fmt.Sprintf("source %s && %s", c.shellConfig, shellCmd)
 		}
+		
+		c.args = []string{"-c", shellCmd}
+		
+		// Add any shell options
+		if len(c.shellOpts) > 0 {
+			c.args = append(c.shellOpts, c.args...)
+		}
+		
+		c.name = c.shell
+	} else if c.shellConfig != "" {
+		// If shell config is provided but command doesn't have spaces,
+		// still wrap it to source the config
+		shellCmd := strings.Join(append(
+			[]string{c.name},
+			c.args...,
+		), " ")
+		shellCmd = fmt.Sprintf("source %s && %s", c.shellConfig, shellCmd)
+		
+		c.args = []string{"-c", shellCmd}
+		
+		if len(c.shellOpts) > 0 {
+			c.args = append(c.shellOpts, c.args...)
+		}
+		
 		c.name = c.shell
 	}
 
