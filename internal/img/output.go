@@ -526,11 +526,11 @@ func (s *Scaffold) AddContent(in io.Reader) error {
 	}
 
 	// Check if this is raw input that might have a prompt at the start
-	enhanced := s.enhanceRawContent(parsed)
+	parsed = s.enhanceRawContent(parsed)
 
 	var tmp bunt.String
 	var counter int
-	for _, cr := range *enhanced {
+	for _, cr := range *parsed {
 		counter++
 
 		if cr.Symbol == '\n' {
@@ -539,7 +539,8 @@ func (s *Scaffold) AddContent(in io.Reader) error {
 
 		// Add an additional newline in case the column
 		// count is reached and line wrapping is needed
-		if counter > s.GetFixedColumns() {
+		// Only wrap if --columns was explicitly set
+		if s.columns != 0 && counter > s.columns {
 			counter = 0
 			tmp = append(tmp, bunt.ColoredRune{
 				Settings: cr.Settings,
