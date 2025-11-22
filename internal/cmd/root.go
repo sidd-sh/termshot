@@ -220,7 +220,11 @@ window including all terminal colors and text decorations.
 		improvedANSI, _ := cmd.Flags().GetBool("improved-ansi")
 		if improvedANSI && rawRead != "" {
 			// Only use improved parser for raw-read files, not for live commands
-			columns := scaffold.GetFixedColumns()
+			// Use a large default to avoid unwanted wrapping, unless --columns is explicitly set
+			columns := 500 // Large default to preserve line lengths
+			if explicitCols, err := cmd.Flags().GetInt("columns"); err == nil && explicitCols > 0 {
+				columns = explicitCols
+			}
 			vt := ansi.NewVirtualTerminal(columns)
 			parsed, err := vt.Parse(&buf)
 			if err != nil {
@@ -233,15 +237,16 @@ window including all terminal colors and text decorations.
 			}
 		}
 
-		// Add the captured output to the scaffold
-		//
-		if err := scaffold.AddContent(&buf); err != nil {
-			return err
-		}
-
-		// Optional: Save content as-is to a file
 		//
 		if rawWrite != "" {
+			// For raw-write, temporarily disable column wrapping
+			originalColumns := scaffold.GetColumns()
+			scaffold.SetColumns(0)
+			if err := scaffold.AddContent(&buf); err != nil {
+				return err
+			}
+			scaffold.SetColumns(originalColumns)
+			
 			var output *os.File
 			var err error
 			switch rawWrite {
@@ -258,6 +263,12 @@ window including all terminal colors and text decorations.
 			}
 
 			return scaffold.WriteRaw(output)
+		}
+
+		// Add the captured output to the scaffold
+		//
+		if err := scaffold.AddContent(&buf); err != nil {
+			return err
 		}
 
 		// Optional: Save image to clipboard

@@ -147,6 +147,8 @@ func (s *Scaffold) SetFontFaceBoldItalic(face imgfont.Face) { s.boldItalic = fac
 
 func (s *Scaffold) SetColumns(columns int) { s.columns = columns }
 
+func (s *Scaffold) GetColumns() int { return s.columns }
+
 func (s *Scaffold) DrawDecorations(value bool) { s.drawDecorations = value }
 
 func (s *Scaffold) DrawShadow(value bool) { s.drawShadow = value }
@@ -588,7 +590,7 @@ func (s *Scaffold) measureContent() (width float64, height float64) {
 		}
 
 	default: // fixed: max width based on column count
-		width = float64(tmpDrawer.MeasureString(strings.Repeat("a", s.GetFixedColumns())) >> 6)
+		width = float64(tmpDrawer.MeasureString(strings.Repeat("a", s.columns)) >> 6)
 	}
 
 	// height, lines times font height and line spacing
