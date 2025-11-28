@@ -125,12 +125,14 @@ func (c *PseudoTerminal) Run() ([]byte, error) {
 			shellCmd = fmt.Sprintf("source %s && %s", c.shellConfig, shellCmd)
 		}
 		
-		c.args = []string{"-c", shellCmd}
-		
-		// Add any shell options
+		// Build shell args
+		shellArgs := []string{}
 		if len(c.shellOpts) > 0 {
-			c.args = append(c.shellOpts, c.args...)
+			shellArgs = append(shellArgs, c.shellOpts...)
 		}
+		
+		shellArgs = append(shellArgs, "-c", shellCmd)
+		c.args = shellArgs
 		
 		c.name = c.shell
 	} else if c.shellConfig != "" {
@@ -142,11 +144,13 @@ func (c *PseudoTerminal) Run() ([]byte, error) {
 		), " ")
 		shellCmd = fmt.Sprintf("source %s && %s", c.shellConfig, shellCmd)
 		
-		c.args = []string{"-c", shellCmd}
-		
+		shellArgs := []string{}
 		if len(c.shellOpts) > 0 {
-			c.args = append(c.shellOpts, c.args...)
+			shellArgs = append(shellArgs, c.shellOpts...)
 		}
+		
+		shellArgs = append(shellArgs, "-c", shellCmd)
+		c.args = shellArgs
 		
 		c.name = c.shell
 	}

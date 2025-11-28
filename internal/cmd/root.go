@@ -56,27 +56,27 @@ window including all terminal colors and text decorations.
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if showVersion, err := cmd.Flags().GetBool("version"); showVersion && err == nil {
-			if len(version) == 0 {
-				version = "(development)"
-			}
-
-			// #nosec G104
-			// nolint:all
-			bunt.Printf("Lime{*%s*} version DimGray{%s}\n",
-				executableName(),
-				version,
-			)
-
-			return nil
+	if showVersion, err := cmd.Flags().GetBool("version"); showVersion && err == nil {
+		if len(version) == 0 {
+			version = "(development)"
 		}
 
-		rawRead, _ := cmd.Flags().GetString("raw-read")
-		rawWrite, _ := cmd.Flags().GetString("raw-write")
+		// #nosec G104
+		// nolint:all
+		bunt.Printf("Lime{*%s*} version DimGray{%s-sidd.sh1}\n",
+			executableName(),
+			version,
+		)
 
-		if len(args) == 0 && rawRead == "" {
-			return cmd.Usage()
-		}
+		return nil
+	}
+
+	rawRead, _ := cmd.Flags().GetString("raw-read")
+	rawWrite, _ := cmd.Flags().GetString("raw-write")
+
+	if len(args) == 0 && rawRead == "" {
+		return cmd.Usage()
+	}
 
 		var scaffold = img.NewImageCreator()
 		var buf bytes.Buffer
@@ -106,9 +106,9 @@ window including all terminal colors and text decorations.
 			scaffold.SetPrompt(customPrompt)
 		}
 
-		// Check for syntax highlighting
-		syntaxHighlight, _ := cmd.Flags().GetBool("syntax-highlight")
-		scaffold.EnableSyntaxHighlighting(syntaxHighlight)
+		// Check for syntax highlighting (enabled by default)
+		noSyntaxHighlight, _ := cmd.Flags().GetBool("no-syntax-highlight")
+		scaffold.EnableSyntaxHighlighting(!noSyntaxHighlight)
 
 		// Check for prompt detection
 		noPromptDetect, _ := cmd.Flags().GetBool("no-prompt-detect")
@@ -216,9 +216,9 @@ window including all terminal colors and text decorations.
 			buf.Write(bytes)
 		}
 
-		// Use improved ANSI parser if enabled
-		improvedANSI, _ := cmd.Flags().GetBool("improved-ansi")
-		if improvedANSI && rawRead != "" {
+		// Use improved ANSI parser unless disabled
+		noImprovedANSI, _ := cmd.Flags().GetBool("no-improved-ansi")
+		if !noImprovedANSI && rawRead != "" {
 			// Only use improved parser for raw-read files, not for live commands
 			// Use a large default to avoid unwanted wrapping, unless --columns is explicitly set
 			columns := 500 // Large default to preserve line lengths
@@ -281,8 +281,20 @@ window including all terminal colors and text decorations.
 		//
 		filename, err := cmd.Flags().GetString("filename")
 		if filename == "" || err != nil {
-			fmt.Fprintf(os.Stderr, "failed to read filename from command-line, defaulting to out.png")
-			filename = "out.png"
+			// Generate filename based on raw-read source or timestamp
+			if rawRead != "" && rawRead != "-" {
+				// Use base name of raw-read file
+				baseName := filepath.Base(rawRead)
+				extension := filepath.Ext(baseName)
+				if extension != "" {
+					baseName = baseName[:len(baseName)-len(extension)]
+				}
+				filename = baseName + ".png"
+			} else {
+				// Use timestamp
+				filename = fmt.Sprintf("termshot-%d.png", os.Getpid())
+			}
+			fmt.Fprintf(os.Stderr, "No filename specified, using: %s\n", filename)
 		}
 
 		if extension := filepath.Ext(filename); extension != ".png" {
@@ -380,17 +392,17 @@ func init() {
 
 	// flags for prompt customization
 	rootCmd.Flags().String("prompt", "", "custom prompt string (overrides default)")
-	rootCmd.Flags().Bool("syntax-highlight", false, "enable syntax highlighting for command")
+	rootCmd.Flags().Bool("no-syntax-highlight", false, "disable syntax highlighting for command")
 
 	// flags for output related settings
 	rootCmd.Flags().StringP("filename", "f", "out.png", "filename of the screenshot")
 
 	// flags for raw output processing
-	rootCmd.Flags().String("raw-write", "", "write raw output to file instead of creating a screenshot")
-	rootCmd.Flags().String("raw-read", "", "read raw input from file instead of executing a command")
+	rootCmd.Flags().StringP("raw-write", "w", "", "write raw output to file instead of creating a screenshot")
+	rootCmd.Flags().StringP("raw-read", "r", "", "read raw input from file instead of executing a command")
 
 	// flags for cursor handling
-	rootCmd.Flags().Bool("improved-ansi", false, "use improved ANSI parser with cursor handling (only for --raw-read)")
+	rootCmd.Flags().BoolP("no-improved-ansi", "n", false, "disable improved ANSI parser with cursor handling")
 	rootCmd.Flags().Bool("no-prompt-detect", false, "disable automatic prompt detection and command highlighting")
 
 	// internals

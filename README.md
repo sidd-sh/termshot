@@ -11,11 +11,12 @@
 
 This fork adds several enhancements:
 - **8 built-in themes** (catppuccin-mocha, nord, dracula, etc.) + custom theme support
-- **Shell configuration** support (--shell, --shell-config, --shell-opts) for custom prompts
-- **Improved ANSI parsing** with virtual terminal for better cursor handling (powerlevel10k compatible)
-- **Syntax highlighting** for shell commands with customizable prompts
+- **Shell configuration** support (--shell, --shell-config, --shell-opts)
+- **Improved ANSI parsing** enabled by default for better cursor handling (use -n to disable)
+- **Syntax highlighting** enabled by default for commands (use --no-syntax-highlight to disable)
+- **Smart filename generation** from input file or timestamp instead of out.png to avoid overwriting your screenshots.
+- **Shorthand flags**: -r (raw-read), -w (raw-write), -n (no-improved-ansi)
 - **--no-prompt-detect** flag for interactive shells with autosuggestions
-- **True RGB color** preservation from modern terminals
 
 Generate beautiful screenshots of your terminal, from your terminal.
 
@@ -109,18 +110,18 @@ termshot --theme-file my-theme.json -- "ls -a"
 
 #### `--prompt`
 
-Customize the command prompt indicator (default is "➜").
+Customize the command prompt indicator (default is "❯").
 
 ```sh
 termshot --show-cmd --prompt "❯" -- "ls -a"
 ```
 
-#### `--syntax-highlight`
+#### `--no-syntax-highlight`
 
-Enable syntax highlighting for the command line. When enabled, commands, keywords, flags, strings, and other tokens are colorized.
+Disable syntax highlighting for the command line (enabled by default).
 
 ```sh
-termshot --show-cmd --syntax-highlight -- "docker ps -a | grep running"
+termshot --show-cmd --no-syntax-highlight -- "docker ps"
 ```
 
 ### Flags for output related settings
@@ -180,20 +181,20 @@ termshot --edit -- "ls -a"
 
 ### Miscellaneous flags
 
-#### `--raw-write <file>`
+#### `--raw-write`/`-w` <file>
 
 Write command output as-is into the file that is specified as the flag argument. No screenshot is being created. The command-line flag `--filename` has no effect, when `--raw-write` is used.
 
-#### `--raw-read <file>`
+#### `--raw-read`/`-r` <file>
 
-Read input from provided file instead of running a command. If this flag is being used, no pseudo terminal is being created to execute a command. The command-line flags `--show-cmd`, and `--edit` have no effect, when `--raw-read` is used.
+Read input from provided file instead of running a command. If this flag is being used, no pseudo terminal is being created to execute a command. The command-line flags `--show-cmd`, and `--edit` have no effect, when `--raw-read` is used. Output filename defaults to the input filename with .png extension.
 
-#### `--improved-ansi`
+#### `--no-improved-ansi`/`-n`
 
-Enable improved ANSI parser with better cursor handling (enabled by default). This helps with prompts that use cursor positioning like powerlevel10k.
+Disable improved ANSI parser with cursor handling (enabled by default for --raw-read).
 
 ```sh
-termshot --improved-ansi -- "ls -a"
+termshot -r input.log -n -o output.png
 ```
 
 #### `--version`/`-v`
@@ -202,7 +203,7 @@ Print the version of `termshot` installed.
 
 ```sh
 $ termshot --version
-termshot version 0.2.5
+termshot version 0.2.5-sidd.sh1
 ```
 
 ### Multiple commands
@@ -217,16 +218,33 @@ termshot /bin/zsh
 
 ## Advanced Examples
 
-### Using with ZSH and powerlevel10k
+### Using with ZSH and custom config
 
 ```sh
 termshot --shell /bin/zsh --shell-config ~/.zshrc --theme catppuccin-mocha --show-cmd -- "git status"
 ```
 
+### Quick screenshot from saved output
+
+```sh
+# Save terminal output
+termshot -w session.log /bin/zsh
+
+# Generate screenshot later (auto-names as session.png)
+termshot -r session.log --theme catppuccin-mocha
+```
+
 ### Custom prompt and syntax highlighting
 
 ```sh
-termshot --show-cmd --prompt "❯" --syntax-highlight -- "docker ps -a | grep running"
+termshot --show-cmd --prompt "❯" -- "docker ps -a | grep running"
+```
+
+### Disable default features
+
+```sh
+# Disable syntax highlighting and ANSI improvements
+termshot --no-syntax-highlight -n -r input.log
 ```
 
 ### Creating a custom theme
