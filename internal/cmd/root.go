@@ -280,7 +280,7 @@ window including all terminal colors and text decorations.
 		// Save image to file
 		//
 		filename, err := cmd.Flags().GetString("filename")
-		if filename == "" || err != nil {
+		if filename == "" {
 			// Generate filename based on raw-read source or timestamp
 			if rawRead != "" && rawRead != "-" {
 				// Use base name of raw-read file
@@ -291,10 +291,12 @@ window including all terminal colors and text decorations.
 				}
 				filename = baseName + ".png"
 			} else {
-				// Use timestamp
+				// Use timestamp for stdin or live command execution
 				filename = fmt.Sprintf("termshot-%d.png", os.Getpid())
 			}
-			fmt.Fprintf(os.Stderr, "No filename specified, using: %s\n", filename)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get filename flag: %w", err)
 		}
 
 		if extension := filepath.Ext(filename); extension != ".png" {
@@ -395,7 +397,7 @@ func init() {
 	rootCmd.Flags().Bool("no-syntax-highlight", false, "disable syntax highlighting for command")
 
 	// flags for output related settings
-	rootCmd.Flags().StringP("filename", "f", "out.png", "filename of the screenshot")
+	rootCmd.Flags().StringP("filename", "f", "", "filename of the screenshot (auto-generated if not specified)")
 
 	// flags for raw output processing
 	rootCmd.Flags().StringP("raw-write", "w", "", "write raw output to file instead of creating a screenshot")

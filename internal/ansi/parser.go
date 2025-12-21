@@ -282,39 +282,53 @@ func (vt *VirtualTerminal) ensureLineExists(line int) {
 
 // clearToEndOfLine clears from cursor to end of current line
 func (vt *VirtualTerminal) clearToEndOfLine() {
-	if vt.cursorY < len(vt.lines) {
-		if vt.cursorX < len(vt.lines[vt.cursorY]) {
-			vt.lines[vt.cursorY] = vt.lines[vt.cursorY][:vt.cursorX]
-		}
+	if vt.cursorY >= len(vt.lines) {
+		return
+	}
+	if vt.lines[vt.cursorY] == nil {
+		vt.lines[vt.cursorY] = []bunt.ColoredRune{}
+		return
+	}
+	if vt.cursorX < len(vt.lines[vt.cursorY]) && vt.cursorX >= 0 {
+		vt.lines[vt.cursorY] = vt.lines[vt.cursorY][:vt.cursorX]
 	}
 }
 
 // clearToBeginningOfLine clears from beginning of line to cursor
 func (vt *VirtualTerminal) clearToBeginningOfLine() {
-	if vt.cursorY < len(vt.lines) {
-		for i := 0; i <= vt.cursorX && i < len(vt.lines[vt.cursorY]); i++ {
-			vt.lines[vt.cursorY][i] = bunt.ColoredRune{Symbol: ' '}
-		}
+	if vt.cursorY >= len(vt.lines) {
+		return
+	}
+	if vt.lines[vt.cursorY] == nil {
+		vt.lines[vt.cursorY] = []bunt.ColoredRune{}
+		return
+	}
+	for i := 0; i <= vt.cursorX && i < len(vt.lines[vt.cursorY]); i++ {
+		vt.lines[vt.cursorY][i] = bunt.ColoredRune{Symbol: ' '}
 	}
 }
 
 // clearLine clears the entire current line
 func (vt *VirtualTerminal) clearLine() {
-	if vt.cursorY < len(vt.lines) {
-		vt.lines[vt.cursorY] = []bunt.ColoredRune{}
+	if vt.cursorY >= len(vt.lines) {
+		return
 	}
+	vt.lines[vt.cursorY] = []bunt.ColoredRune{}
 }
 
 // clearToEndOfScreen clears from cursor to end of screen
 func (vt *VirtualTerminal) clearToEndOfScreen() {
 	vt.clearToEndOfLine()
-	if vt.cursorY+1 < len(vt.lines) {
+	if vt.cursorY >= 0 && vt.cursorY+1 < len(vt.lines) {
 		vt.lines = vt.lines[:vt.cursorY+1]
 	}
 }
 
 // clearToBeginningOfScreen clears from beginning of screen to cursor
 func (vt *VirtualTerminal) clearToBeginningOfScreen() {
+	if vt.cursorY < 0 {
+		return
+	}
 	for i := 0; i < vt.cursorY && i < len(vt.lines); i++ {
 		vt.lines[i] = []bunt.ColoredRune{}
 	}
