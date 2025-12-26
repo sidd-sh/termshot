@@ -32,6 +32,7 @@ import (
 	"github.com/gonvenience/neat"
 
 	"github.com/homeport/termshot/internal/ansi"
+	"github.com/homeport/termshot/internal/highlight"
 	"github.com/homeport/termshot/internal/img"
 	"github.com/homeport/termshot/internal/ptexec"
 	"github.com/homeport/termshot/internal/theme"
@@ -121,6 +122,10 @@ window including all terminal colors and text decorations.
 		
 		if shellPath != "" {
 			pt.SetShell(shellPath)
+			// Set shell type for syntax highlighting
+			if strings.Contains(strings.ToLower(shellPath), "powershell") || strings.Contains(strings.ToLower(shellPath), "pwsh") {
+				scaffold.SetShellType(highlight.ShellPowerShell)
+			}
 		}
 		if shellConfig != "" {
 			pt.SetShellConfig(shellConfig)

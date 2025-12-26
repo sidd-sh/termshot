@@ -92,6 +92,7 @@ type Scaffold struct {
 	
 	// Syntax highlighting
 	syntaxHighlight bool
+	shellType       highlight.ShellType
 	
 	// Prompt detection
 	noPromptDetect bool
@@ -170,6 +171,11 @@ func (s *Scaffold) SetPrompt(prompt string) { s.customPrompt = prompt }
 func (s *Scaffold) EnableSyntaxHighlighting(enable bool) { s.syntaxHighlight = enable }
 
 func (s *Scaffold) DisablePromptDetection(disable bool) { s.noPromptDetect = disable }
+
+// SetShellType sets the shell type for syntax highlighting
+func (s *Scaffold) SetShellType(shellType highlight.ShellType) {
+	s.shellType = shellType
+}
 
 func (s *Scaffold) GetFixedColumns() int {
 	if s.columns != 0 {

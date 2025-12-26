@@ -27,7 +27,15 @@ type Token struct {
 	Value string
 }
 
-// Shell keywords and built-ins
+// ShellType represents the type of shell for syntax highlighting
+type ShellType int
+
+const (
+	ShellBash ShellType = iota
+	ShellPowerShell
+)
+
+// Shell keywords and built-ins for bash/zsh
 var shellKeywords = map[string]bool{
 	"if": true, "then": true, "else": true, "elif": true, "fi": true,
 	"case": true, "esac": true, "for": true, "while": true, "until": true,
@@ -39,19 +47,54 @@ var shellKeywords = map[string]bool{
 	"echo": true, "printf": true, "read": true, "exit": true, "true": true, "false": true,
 }
 
-// Lexer performs syntax highlighting for shell commands
-type Lexer struct {
-	input string
-	pos   int
-	tokens []Token
+// PowerShell keywords and cmdlets
+var powershellKeywords = map[string]bool{
+	"if": true, "else": true, "elseif": true, "switch": true, "for": true, "foreach": true,
+	"while": true, "do": true, "until": true, "break": true, "continue": true, "return": true,
+	"function": true, "filter": true, "param": true, "begin": true, "process": true, "end": true,
+	"try": true, "catch": true, "finally": true, "throw": true, "trap": true,
+	"class": true, "enum": true, "using": true, "namespace": true,
+	"in": true, "exit": true, "where": true, "select": true,
 }
 
-// NewLexer creates a new lexer for the given input
+var powershellCmdlets = map[string]bool{
+	"Get-ChildItem": true, "Get-Content": true, "Set-Content": true, "Get-Item": true,
+	"Get-Location": true, "Set-Location": true, "Get-Process": true, "Stop-Process": true,
+	"Start-Process": true, "Get-Service": true, "Start-Service": true, "Stop-Service": true,
+	"Write-Host": true, "Write-Output": true, "Read-Host": true, "Clear-Host": true,
+	"Get-Command": true, "Get-Help": true, "Get-Member": true, "Measure-Object": true,
+	"Select-Object": true, "Where-Object": true, "ForEach-Object": true, "Sort-Object": true,
+	"Group-Object": true, "Export-Csv": true, "Import-Csv": true, "ConvertTo-Json": true,
+	"ConvertFrom-Json": true, "Invoke-RestMethod": true, "Invoke-WebRequest": true,
+	"New-Item": true, "Remove-Item": true, "Copy-Item": true, "Move-Item": true,
+	"Test-Path": true, "Join-Path": true, "Split-Path": true,
+}
+
+// Lexer performs syntax highlighting for shell commands
+type Lexer struct {
+	input     string
+	pos       int
+	tokens    []Token
+	shellType ShellType
+}
+
+// NewLexer creates a new lexer for the given input with default bash shell
 func NewLexer(input string) *Lexer {
 	return &Lexer{
-		input: input,
-		pos:   0,
-		tokens: []Token{},
+		input:     input,
+		pos:       0,
+		tokens:    []Token{},
+		shellType: ShellBash,
+	}
+}
+
+// NewLexerWithShell creates a new lexer for the given input and shell type
+func NewLexerWithShell(input string, shellType ShellType) *Lexer {
+	return &Lexer{
+		input:     input,
+		pos:       0,
+		tokens:    []Token{},
+		shellType: shellType,
 	}
 }
 
@@ -109,16 +152,20 @@ func (l *Lexer) Tokenize() []Token {
 		if unicode.IsLetter(rune(ch)) || unicode.IsDigit(rune(ch)) || ch == '.' || ch == '/' || ch == '_' || ch == '~' {
 			word := l.tokenizeWord()
 			
-			// Determine token type
+			// Determine token type based on shell
 			if isFirstWord {
-				if shellKeywords[word] {
+				if l.isKeyword(word) {
 					l.tokens[len(l.tokens)-1].Type = TokenKeyword
+				} else if l.shellType == ShellPowerShell && l.isCmdlet(word) {
+					l.tokens[len(l.tokens)-1].Type = TokenCommand
 				} else {
 					l.tokens[len(l.tokens)-1].Type = TokenCommand
 				}
 				isFirstWord = false
-			} else if shellKeywords[word] {
+			} else if l.isKeyword(word) {
 				l.tokens[len(l.tokens)-1].Type = TokenKeyword
+			} else if l.shellType == ShellPowerShell && l.isCmdlet(word) {
+				l.tokens[len(l.tokens)-1].Type = TokenCommand
 			} else if l.isPath(word) {
 				l.tokens[len(l.tokens)-1].Type = TokenPath
 			} else if l.isNumber(word) {
@@ -250,12 +297,39 @@ func (l *Lexer) tokenizeComment() {
 	l.addToken(TokenComment, l.input[start:l.pos])
 }
 
+// isKeyword checks if a word is a keyword based on shell type
+func (l *Lexer) isKeyword(word string) bool {
+	wordLower := strings.ToLower(word)
+	if l.shellType == ShellPowerShell {
+		return powershellKeywords[wordLower]
+	}
+	return shellKeywords[word]
+}
+
+// isCmdlet checks if a word is a PowerShell cmdlet
+func (l *Lexer) isCmdlet(word string) bool {
+	if l.shellType != ShellPowerShell {
+		return false
+	}
+	return powershellCmdlets[word]
+}
+
 // isPath checks if a word looks like a file path
 func (l *Lexer) isPath(word string) bool {
-	return strings.HasPrefix(word, "/") || 
-	       strings.HasPrefix(word, "./") || 
-	       strings.HasPrefix(word, "../") ||
-	       strings.HasPrefix(word, "~/")
+	// Unix paths
+	if strings.HasPrefix(word, "/") || 
+	   strings.HasPrefix(word, "./") || 
+	   strings.HasPrefix(word, "../") ||
+	   strings.HasPrefix(word, "~/") {
+		return true
+	}
+	// Windows paths (PowerShell)
+	if l.shellType == ShellPowerShell && len(word) >= 3 {
+		if (word[1] == ':' && (word[2] == '\\' || word[2] == '/')) {
+			return true
+		}
+	}
+	return false
 }
 
 // isNumber checks if a word is a number

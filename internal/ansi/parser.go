@@ -104,6 +104,10 @@ func (vt *VirtualTerminal) Parse(input io.Reader) (*bunt.String, error) {
 			vt.cursorY++
 			vt.cursorX = 0
 			vt.ensureLineExists(vt.cursorY)
+			// Ensure the new line has capacity after wrap
+			if len(vt.lines[vt.cursorY]) == 0 {
+				vt.lines[vt.cursorY] = append(vt.lines[vt.cursorY], bunt.ColoredRune{Symbol: ' '})
+			}
 		}
 
 		vt.lines[vt.cursorY][vt.cursorX] = cr
