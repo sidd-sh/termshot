@@ -31,6 +31,12 @@ import (
 	. "github.com/homeport/termshot/internal/img"
 )
 
+type panicReader struct{}
+
+func (p panicReader) Read(_ []byte) (int, error) {
+	panic("synthetic panic")
+}
+
 var _ = Describe("Creating images", func() {
 	Context("Use scaffold to create PNG file", func() {
 		BeforeEach(func() {
@@ -110,6 +116,32 @@ var _ = Describe("Creating images", func() {
 			Expect(scaffold.AddContent(strings.NewReader(Sprintf("MintCream{foobar}")))).To(Succeed())
 			Expect(scaffold.WriteRaw(&buf)).To(Succeed())
 			Expect(buf.String()).To(Equal("\x1b[38;2;245;255;250mfoobar\x1b[0m"))
+		})
+	})
+
+	Context("Font configuration", func() {
+		It("should support switching to hack font family", func() {
+			scaffold := NewImageCreator()
+			Expect(scaffold.ConfigureFonts(FontConfig{Name: "hack"})).To(Succeed())
+		})
+
+		It("should reject unsupported font families", func() {
+			scaffold := NewImageCreator()
+			Expect(scaffold.ConfigureFonts(FontConfig{Name: "unsupported"})).To(HaveOccurred())
+		})
+
+		It("should require regular font path for custom font files", func() {
+			scaffold := NewImageCreator()
+			Expect(scaffold.ConfigureFonts(FontConfig{BoldPath: "font.ttf"})).To(HaveOccurred())
+		})
+	})
+
+	Context("Malformed input handling", func() {
+		It("should return an error when reader panics", func() {
+			scaffold := NewImageCreator()
+			err := scaffold.AddContent(panicReader{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("panic while parsing input stream"))
 		})
 	})
 })

@@ -21,6 +21,7 @@
 package img
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -527,8 +528,19 @@ func (s *Scaffold) remapAnsiColor(r, g, b int) color.Color {
 }
 
 
-func (s *Scaffold) AddContent(in io.Reader) error {
-	parsed, err := bunt.ParseStream(in)
+func (s *Scaffold) AddContent(in io.Reader) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("panic while parsing input stream: %v", recovered)
+		}
+	}()
+
+	input, err := io.ReadAll(in)
+	if err != nil {
+		return fmt.Errorf("failed to read input stream: %w", err)
+	}
+
+	parsed, err := bunt.ParseStream(bytes.NewReader(input))
 	if err != nil {
 		return fmt.Errorf("failed to parse input stream: %w", err)
 	}

@@ -11,8 +11,10 @@
 
 This fork adds several enhancements:
 - **8 built-in themes** (catppuccin-mocha, nord, dracula, etc.) + custom theme support
+- **Custom font configuration** with `FiraCode Mono` as the default font family
 - **Shell configuration** support (--shell, --shell-config, --shell-opts)
 - **Improved ANSI parsing** enabled by default for better cursor handling (use -n to disable)
+- **Recovery dumps on parser/render panics** so captured terminal output is not lost
 - **Syntax highlighting** enabled by default for commands (use --no-syntax-highlight to disable)
 - **Smart filename generation** from input file or timestamp instead of out.png to avoid overwriting your screenshots.
 - **Shorthand flags**: -r (raw-read), -w (raw-write), -n (no-improved-ansi)
@@ -116,6 +118,53 @@ Customize the command prompt indicator (default is "❯").
 termshot --show-cmd --prompt "❯" -- "ls -a"
 ```
 
+#### `--font`
+
+Set the font family used for rendering terminal text. Supported built-in values:
+- `firacode-mono` (default)
+- `hack`
+- `go-mono`
+
+```sh
+termshot --font hack -- "ls -a"
+```
+
+#### `--font-size` and `--font-dpi`
+
+Adjust font rendering size and DPI.
+
+```sh
+termshot --font-size 13 --font-dpi 144 -- "ls -a"
+```
+
+#### `--font-regular`, `--font-bold`, `--font-italic`, `--font-bold-italic`
+
+Load custom font files. `--font-regular` is required when using custom font files; missing style variants fall back to the regular/bold file. Font file names are resolved against the current directory, `~/.config/termshot`, `~/.config/termshot/fonts`, and `~/.local/share/fonts`.
+
+```sh
+termshot \
+  --font-regular "C:\Windows\Fonts\FiraCode-Regular.ttf" \
+  --font-bold "C:\Windows\Fonts\FiraCode-Bold.ttf" \
+  -- "ls -a"
+```
+
+#### Global configuration
+
+`termshot` reads optional defaults from `~/.config/termshot/config.json`. A minimal example looks like this:
+
+```json
+{
+  "font": {
+    "name": "hack",
+    "size": 13,
+    "dpi": 144,
+    "regular_path": "Goregular.ttf"
+  }
+}
+```
+
+If a font file name is provided instead of a full path, `termshot` will look for it in the current directory, the config directory, and the user font directory under `~/.local/share/fonts`.
+
 #### `--no-syntax-highlight`
 
 Disable syntax highlighting for the command line (enabled by default).
@@ -196,6 +245,10 @@ Disable improved ANSI parser with cursor handling (enabled by default for --raw-
 ```sh
 termshot -r input.log -n -o output.png
 ```
+
+If termshot encounters malformed terminal data and hits an internal panic while parsing/rendering, it now writes a recovery copy of captured output to:
+- Linux/macOS: `<user-cache-dir>/termshot/recovery/`
+- Windows: `%LocalAppData%\termshot\recovery\`
 
 #### `--version`/`-v`
 

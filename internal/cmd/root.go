@@ -56,37 +56,114 @@ window including all terminal colors and text decorations.
 `,
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-	if showVersion, err := cmd.Flags().GetBool("version"); showVersion && err == nil {
-		if len(version) == 0 {
-			version = "(development)"
+	RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+		if showVersion, err := cmd.Flags().GetBool("version"); showVersion && err == nil {
+			if len(version) == 0 {
+				version = "(development)"
+			}
+
+			// #nosec G104
+			// nolint:all
+			bunt.Printf("Lime{*%s*} version DimGray{%s-sidd.sh1}\n",
+				executableName(),
+				version,
+			)
+
+			return nil
 		}
 
-		// #nosec G104
-		// nolint:all
-		bunt.Printf("Lime{*%s*} version DimGray{%s-sidd.sh1}\n",
-			executableName(),
-			version,
-		)
+		rawRead, _ := cmd.Flags().GetString("raw-read")
+		rawWrite, _ := cmd.Flags().GetString("raw-write")
 
-		return nil
-	}
-
-	rawRead, _ := cmd.Flags().GetString("raw-read")
-	rawWrite, _ := cmd.Flags().GetString("raw-write")
-
-	if len(args) == 0 && rawRead == "" {
-		return cmd.Usage()
-	}
+		if len(args) == 0 && rawRead == "" {
+			return cmd.Usage()
+		}
 
 		var scaffold = img.NewImageCreator()
 		var buf bytes.Buffer
 		var pt = ptexec.New()
+		var capturedOutput []byte
+
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				panicErr := fmt.Errorf("internal panic while processing terminal output: %v", recovered)
+				runErr = wrapErrorWithRecoveryDump("termshot panic recovery", panicErr, capturedOutput)
+			}
+		}()
+
+		// Configure fonts
+		fontName, _ := cmd.Flags().GetString("font")
+		fontSize, _ := cmd.Flags().GetFloat64("font-size")
+		fontDPI, _ := cmd.Flags().GetFloat64("font-dpi")
+		fontRegular, _ := cmd.Flags().GetString("font-regular")
+		fontBold, _ := cmd.Flags().GetString("font-bold")
+		fontItalic, _ := cmd.Flags().GetString("font-italic")
+		fontBoldItalic, _ := cmd.Flags().GetString("font-bold-italic")
+
+		globalConfig, err := loadGlobalConfig()
+		if err != nil {
+			return err
+		}
+
+		fontConfig := img.FontConfig{
+			Name:           fontName,
+			Size:           fontSize,
+			DPI:            fontDPI,
+			RegularPath:    fontRegular,
+			BoldPath:       fontBold,
+			ItalicPath:     fontItalic,
+			BoldItalicPath: fontBoldItalic,
+		}
+
+		if !cmd.Flags().Changed("font") && globalConfig.Font.Name != "" {
+			fontConfig.Name = globalConfig.Font.Name
+		}
+		if !cmd.Flags().Changed("font-size") && globalConfig.Font.Size > 0 {
+			fontConfig.Size = globalConfig.Font.Size
+		}
+		if !cmd.Flags().Changed("font-dpi") && globalConfig.Font.DPI > 0 {
+			fontConfig.DPI = globalConfig.Font.DPI
+		}
+		if !cmd.Flags().Changed("font-regular") && globalConfig.Font.RegularPath != "" {
+			fontConfig.RegularPath = globalConfig.Font.RegularPath
+		}
+		if !cmd.Flags().Changed("font-bold") && globalConfig.Font.BoldPath != "" {
+			fontConfig.BoldPath = globalConfig.Font.BoldPath
+		}
+		if !cmd.Flags().Changed("font-italic") && globalConfig.Font.ItalicPath != "" {
+			fontConfig.ItalicPath = globalConfig.Font.ItalicPath
+		}
+		if !cmd.Flags().Changed("font-bold-italic") && globalConfig.Font.BoldItalicPath != "" {
+			fontConfig.BoldItalicPath = globalConfig.Font.BoldItalicPath
+		}
+
+		if err := scaffold.ConfigureFonts(fontConfig); err != nil {
+			fontFlagIsDefault := fontConfig.Name == img.DefaultFontFamily
+			noCustomFontFiles := fontConfig.RegularPath == "" && fontConfig.BoldPath == "" && fontConfig.ItalicPath == "" && fontConfig.BoldItalicPath == ""
+			if fontFlagIsDefault && noCustomFontFiles {
+				fmt.Fprintf(
+					os.Stderr,
+					"Warning: failed to load default font %q (%v), falling back to %q\n",
+					img.DefaultFontFamily,
+					err,
+					img.FallbackFontFamily,
+				)
+				if fallbackErr := scaffold.ConfigureFonts(img.FontConfig{
+					Name: img.FallbackFontFamily,
+					Size: fontSize,
+					DPI:  fontDPI,
+				}); fallbackErr != nil {
+					return fmt.Errorf("failed to configure fallback font: %w", fallbackErr)
+				}
+			} else {
+				return fmt.Errorf("failed to configure fonts: %w", err)
+			}
+		}
 
 		// Load theme
 		themeName, _ := cmd.Flags().GetString("theme")
 		themeFile, _ := cmd.Flags().GetString("theme-file")
-		
+
 		var selectedTheme theme.Theme
 		if themeFile != "" {
 			loadedTheme, err := theme.LoadThemeFromFile(themeFile)
@@ -97,7 +174,7 @@ window including all terminal colors and text decorations.
 		} else {
 			selectedTheme = theme.GetTheme(themeName)
 		}
-		
+
 		// Apply theme to scaffold
 		scaffold.SetTheme(selectedTheme)
 
@@ -119,7 +196,7 @@ window including all terminal colors and text decorations.
 		shellPath, _ := cmd.Flags().GetString("shell")
 		shellConfig, _ := cmd.Flags().GetString("shell-config")
 		shellOpts, _ := cmd.Flags().GetStringSlice("shell-opts")
-		
+
 		if shellPath != "" {
 			pt.SetShell(shellPath)
 			// Set shell type for syntax highlighting
@@ -178,6 +255,7 @@ window including all terminal colors and text decorations.
 				return fmt.Errorf("failed to run command in pseudo terminal: %w", err)
 			}
 			buf.Write(bytes)
+			capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
 
 		} else {
 			// Read the content from an existing file instead of
@@ -187,6 +265,7 @@ window including all terminal colors and text decorations.
 				return fmt.Errorf("failed to read contents: %w", err)
 			}
 			buf.Write(bytes)
+			capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
 		}
 
 		// Allow manual override of command output content
@@ -219,6 +298,7 @@ window including all terminal colors and text decorations.
 
 			buf.Reset()
 			buf.Write(bytes)
+			capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
 		}
 
 		// Use improved ANSI parser unless disabled
@@ -239,6 +319,7 @@ window including all terminal colors and text decorations.
 				// Replace buffer content with parsed output
 				buf.Reset()
 				buf.WriteString(parsed.String())
+				capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
 			}
 		}
 
@@ -248,10 +329,10 @@ window including all terminal colors and text decorations.
 			originalColumns := scaffold.GetColumns()
 			scaffold.SetColumns(0)
 			if err := scaffold.AddContent(&buf); err != nil {
-				return err
+				return wrapErrorWithRecoveryDump("failed to parse captured terminal output", err, capturedOutput)
 			}
 			scaffold.SetColumns(originalColumns)
-			
+
 			var output *os.File
 			var err error
 			switch rawWrite {
@@ -273,7 +354,7 @@ window including all terminal colors and text decorations.
 		// Add the captured output to the scaffold
 		//
 		if err := scaffold.AddContent(&buf); err != nil {
-			return err
+			return wrapErrorWithRecoveryDump("failed to parse captured terminal output", err, capturedOutput)
 		}
 
 		// Optional: Save image to clipboard
@@ -396,6 +477,15 @@ func init() {
 	// flags for theming
 	rootCmd.Flags().String("theme", "default", "color theme to use (default, catppuccin-mocha, nord, dracula, tokyo-night, gruvbox-dark, solarized-dark)")
 	rootCmd.Flags().String("theme-file", "", "path to custom theme JSON file")
+
+	// flags for font configuration
+	rootCmd.Flags().String("font", img.DefaultFontFamily, "font family (firacode-mono, hack, go-mono)")
+	rootCmd.Flags().Float64("font-size", 12, "font size in points")
+	rootCmd.Flags().Float64("font-dpi", 144, "font DPI")
+	rootCmd.Flags().String("font-regular", "", "path to custom regular font file (.ttf/.otf)")
+	rootCmd.Flags().String("font-bold", "", "path to custom bold font file (.ttf/.otf)")
+	rootCmd.Flags().String("font-italic", "", "path to custom italic font file (.ttf/.otf)")
+	rootCmd.Flags().String("font-bold-italic", "", "path to custom bold italic font file (.ttf/.otf)")
 
 	// flags for prompt customization
 	rootCmd.Flags().String("prompt", "", "custom prompt string (overrides default)")
