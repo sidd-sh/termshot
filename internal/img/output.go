@@ -30,6 +30,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/esimov/stackblur-go"
 	"github.com/fogleman/gg"
@@ -82,19 +83,20 @@ type Scaffold struct {
 	bold        imgfont.Face
 	italic      imgfont.Face
 	boldItalic  imgfont.Face
+	fallbacks   []imgfont.Face
 	lineSpacing float64
 	tabSpaces   int
 
 	// Theme support
 	currentTheme theme.Theme
-	
+
 	// Prompt customization
 	customPrompt string
-	
+
 	// Syntax highlighting
 	syntaxHighlight bool
 	shellType       highlight.ShellType
-	
+
 	// Prompt detection
 	noPromptDetect bool
 }
@@ -132,7 +134,7 @@ func NewImageCreator() Scaffold {
 
 		lineSpacing: 1.2,
 		tabSpaces:   2,
-		
+
 		currentTheme:    defaultTheme,
 		customPrompt:    "",
 		syntaxHighlight: false, // Default to false for backward compatibility
@@ -157,8 +159,8 @@ func (s *Scaffold) DrawShadow(value bool) { s.drawShadow = value }
 
 func (s *Scaffold) ClipCanvas(value bool) { s.clipCanvas = value }
 
-func (s *Scaffold) SetTheme(t theme.Theme) { 
-	s.currentTheme = t 
+func (s *Scaffold) SetTheme(t theme.Theme) {
+	s.currentTheme = t
 	// Update foreground color based on theme
 	if c, err := theme.ParseColor(t.Foreground); err == nil {
 		s.defaultForegroundColor = c
@@ -192,37 +194,37 @@ func (s *Scaffold) AddCommand(args ...string) error {
 	if s.customPrompt != "" {
 		prompt = s.customPrompt
 	}
-	
+
 	cmdString := strings.Join(args, " ")
-	
+
 	// Apply syntax highlighting if enabled
 	if s.syntaxHighlight {
-		return s.AddContent(strings.NewReader(
-			s.syntaxHighlightCommand(prompt, cmdString) + "\n",
-		))
+		return s.addContent(strings.NewReader(
+			s.syntaxHighlightCommand(prompt, cmdString)+"\n",
+		), false)
 	}
-	
+
 	// Default behavior without syntax highlighting
-	return s.AddContent(strings.NewReader(
+	return s.addContent(strings.NewReader(
 		bunt.Sprintf("Lime{%s} DimGray{%s}\n",
 			prompt,
 			cmdString,
 		),
-	))
+	), false)
 }
 
 func (s *Scaffold) syntaxHighlightCommand(prompt string, command string) string {
 	lexer := highlight.NewLexer(command)
 	tokens := lexer.Tokenize()
-	
+
 	var result strings.Builder
 	result.WriteString(bunt.Sprintf("Lime{%s} ", prompt))
-	
+
 	for _, token := range tokens {
 		coloredText := s.colorizeToken(token)
 		result.WriteString(coloredText)
 	}
-	
+
 	return result.String()
 }
 
@@ -312,16 +314,16 @@ func (s *Scaffold) enhanceRawContent(parsed *bunt.String) *bunt.String {
 		}
 		nextLine := s.getLineAt(parsed, nextLineStart)
 		isNextPrompt := false
-		
+
 		for _, indicator := range promptIndicators {
 			if strings.HasPrefix(nextLine, indicator) {
 				isNextPrompt = true
 				break
 			}
 		}
-		
-		// Only add spacing if the next line is NOT another prompt
-		if !isNextPrompt && strings.TrimSpace(nextLine) != "" {
+
+		// Only add spacing if the next line is NOT another prompt or a wrapped continuation line.
+		if !isNextPrompt && strings.TrimSpace(nextLine) != "" && !strings.HasPrefix(nextLine, " ") && !strings.HasPrefix(nextLine, "\t") {
 			result = append(result, bunt.ColoredRune{Symbol: '\n'})
 		}
 	}
@@ -398,7 +400,7 @@ func (s *Scaffold) highlightCommandLine(line bunt.String) bunt.String {
 
 	// Build the highlighted result
 	var result bunt.String
-	
+
 	// Magenta color for prompt: rgb(203, 166, 247)
 	var promptSettings uint64 = 1 // Foreground color enabled
 	promptSettings |= uint64(203) << 8
@@ -467,7 +469,7 @@ func (s *Scaffold) remapAnsiColor(r, g, b int) color.Color {
 	// Standard ANSI 16 colors have very specific RGB values
 	// We should only remap these exact values, not arbitrary RGB colors
 	type ansiColor struct{ r, g, b int }
-	
+
 	// Map of exact standard ANSI color values to theme colors
 	// These are the default values used by most terminal emulators
 	standardColors := map[ansiColor]string{
@@ -480,7 +482,7 @@ func (s *Scaffold) remapAnsiColor(r, g, b int) color.Color {
 		{128, 0, 128}:   s.currentTheme.Magenta,
 		{0, 128, 128}:   s.currentTheme.Cyan,
 		{192, 192, 192}: s.currentTheme.White,
-		
+
 		// Bright colors (90-97) - typical default values
 		{128, 128, 128}: s.currentTheme.BrightBlack,
 		{255, 0, 0}:     s.currentTheme.BrightRed,
@@ -491,14 +493,14 @@ func (s *Scaffold) remapAnsiColor(r, g, b int) color.Color {
 		{0, 255, 255}:   s.currentTheme.BrightCyan,
 		{255, 255, 255}: s.currentTheme.BrightWhite,
 	}
-	
+
 	// Check for exact match with standard ANSI colors
 	if hexColor, ok := standardColors[ansiColor{r, g, b}]; ok {
 		if c, err := theme.ParseColor(hexColor); err == nil {
 			return c
 		}
 	}
-	
+
 	// Check with small tolerance (5) for slight variations in ANSI colors
 	tolerance := 5
 	for ansi, hexColor := range standardColors {
@@ -514,21 +516,24 @@ func (s *Scaffold) remapAnsiColor(r, g, b int) color.Color {
 		if db < 0 {
 			db = -db
 		}
-		
+
 		if dr <= tolerance && dg <= tolerance && db <= tolerance {
 			if c, err := theme.ParseColor(hexColor); err == nil {
 				return c
 			}
 		}
 	}
-	
+
 	// Not a standard ANSI color - this is likely a true RGB color from the terminal
 	// Return it unchanged to preserve the terminal's actual color scheme
 	return color.RGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}
 }
 
-
 func (s *Scaffold) AddContent(in io.Reader) (err error) {
+	return s.addContent(in, true)
+}
+
+func (s *Scaffold) addContent(in io.Reader, enhance bool) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("panic while parsing input stream: %v", recovered)
@@ -545,8 +550,10 @@ func (s *Scaffold) AddContent(in io.Reader) (err error) {
 		return fmt.Errorf("failed to parse input stream: %w", err)
 	}
 
-	// Check if this is raw input that might have a prompt at the start
-	parsed = s.enhanceRawContent(parsed)
+	if enhance {
+		// Check if this is raw input that might have a prompt at the start
+		parsed = s.enhanceRawContent(parsed)
+	}
 
 	var tmp bunt.String
 	var counter int
@@ -695,21 +702,26 @@ func (s *Scaffold) image() (image.Image, error) {
 	//
 	var x, y = xOffset + paddingX, yOffset + paddingY + titleOffset + s.fontHeight()
 	for _, cr := range s.content {
+		currentFace := s.regular
 		switch cr.Settings & 0x1C {
 		case 4:
-			dc.SetFontFace(s.bold)
+			currentFace = s.bold
 
 		case 8:
-			dc.SetFontFace(s.italic)
+			currentFace = s.italic
 
 		case 12:
-			dc.SetFontFace(s.boldItalic)
+			currentFace = s.boldItalic
 
 		default:
-			dc.SetFontFace(s.regular)
+			currentFace = s.regular
 		}
 
 		str := string(cr.Symbol)
+		face := s.faceForRune(cr.Symbol, currentFace)
+		dc.SetFontFace(face)
+		displayRune := s.renderRune(cr.Symbol, face)
+		str = string(displayRune)
 		w, h := dc.MeasureString(str)
 
 		// background color
@@ -718,7 +730,7 @@ func (s *Scaffold) image() (image.Image, error) {
 			bgR := int((cr.Settings >> 32) & 0xFF)
 			bgG := int((cr.Settings >> 40) & 0xFF)
 			bgB := int((cr.Settings >> 48) & 0xFF)
-			
+
 			// Remap ANSI colors to theme colors
 			remappedBg := s.remapAnsiColor(bgR, bgG, bgB)
 			dc.SetColor(remappedBg)
@@ -733,7 +745,7 @@ func (s *Scaffold) image() (image.Image, error) {
 			fgR := int((cr.Settings >> 8) & 0xFF)
 			fgG := int((cr.Settings >> 16) & 0xFF)
 			fgB := int((cr.Settings >> 24) & 0xFF)
-			
+
 			// Remap ANSI colors to theme colors
 			remappedFg := s.remapAnsiColor(fgR, fgG, fgB)
 			dc.SetColor(remappedFg)
@@ -824,6 +836,71 @@ func (s *Scaffold) WritePNG(w io.Writer) error {
 	}
 
 	return png.Encode(w, img)
+}
+
+func (s *Scaffold) faceForRune(symbol rune, preferred imgfont.Face) imgfont.Face {
+	if isEmojiLikeRune(symbol) {
+		for _, face := range s.fallbacks {
+			if faceSupportsRune(face, symbol) {
+				return face
+			}
+		}
+	}
+
+	if faceSupportsRune(preferred, symbol) {
+		return preferred
+	}
+
+	for _, face := range []imgfont.Face{s.regular, s.bold, s.italic, s.boldItalic} {
+		if face != nil && face != preferred && faceSupportsRune(face, symbol) {
+			return face
+		}
+	}
+
+	for _, face := range s.fallbacks {
+		if face != nil && faceSupportsRune(face, symbol) {
+			return face
+		}
+	}
+
+	return preferred
+}
+
+func faceSupportsRune(face imgfont.Face, symbol rune) bool {
+	if face == nil {
+		return false
+	}
+
+	_, ok := face.GlyphAdvance(symbol)
+	return ok
+}
+
+func (s *Scaffold) renderRune(symbol rune, face imgfont.Face) rune {
+	if faceSupportsRune(face, symbol) {
+		return symbol
+	}
+
+	if isEmojiLikeRune(symbol) {
+		return '?'
+	}
+
+	return symbol
+}
+
+func isEmojiLikeRune(symbol rune) bool {
+	for _, r := range []struct{ min, max rune }{
+		{0x2190, 0x21FF},
+		{0x2300, 0x23FF},
+		{0x2460, 0x24FF},
+		{0x25A0, 0x27BF},
+		{0x1F000, 0x1FAFF},
+	} {
+		if symbol >= r.min && symbol <= r.max {
+			return true
+		}
+	}
+
+	return unicode.Is(unicode.So, symbol)
 }
 
 // WriteRaw writes the scaffold content as-is into the provided writer

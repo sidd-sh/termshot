@@ -31,6 +31,7 @@ import (
 	"github.com/golang/freetype/truetype"
 	"github.com/gonvenience/font"
 	imgfont "golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 const (
@@ -69,7 +70,10 @@ func (s *Scaffold) ConfigureFonts(config FontConfig) error {
 	}
 
 	if config.RegularPath != "" || config.BoldPath != "" || config.ItalicPath != "" || config.BoldItalicPath != "" {
-		return s.applyCustomFontFiles(config, options)
+		if err := s.applyCustomFontFiles(config, options); err != nil {
+			return err
+		}
+		return s.configureFallbackFonts(options)
 	}
 
 	name := normalizeFontFamilyName(config.Name)
@@ -80,10 +84,10 @@ func (s *Scaffold) ConfigureFonts(config FontConfig) error {
 	switch name {
 	case "hack":
 		s.setFontFacesFromProvider(font.Hack, options)
-		return nil
+		return s.configureFallbackFonts(options)
 	case "go-mono", "go":
 		s.setFontFacesFromProvider(font.Go, options)
-		return nil
+		return s.configureFallbackFonts(options)
 	case "firacode-mono", "fira-code", "firacode":
 		return s.applyFiraCodeMono(options)
 	default:
@@ -139,7 +143,7 @@ func (s *Scaffold) applyCustomFontFiles(config FontConfig, options *truetype.Opt
 	}
 	s.boldItalic = boldItalic
 
-	return nil
+	return s.configureFallbackFonts(options)
 }
 
 func (s *Scaffold) applyFiraCodeMono(options *truetype.Options) error {
@@ -154,6 +158,57 @@ func (s *Scaffold) applyFiraCodeMono(options *truetype.Options) error {
 		ItalicPath:     fontPaths.italic,
 		BoldItalicPath: fontPaths.boldItalic,
 	}, options)
+}
+
+func (s *Scaffold) configureFallbackFonts(options *truetype.Options) error {
+	fallbackPaths, _ := detectEmojiFallbackFontPaths()
+	s.fallbacks = s.fallbacks[:0]
+
+	for _, path := range fallbackPaths {
+		face, err := loadFontFaceFromFile(path, options)
+		if err != nil {
+			continue
+		}
+		s.fallbacks = append(s.fallbacks, face)
+	}
+
+	return nil
+}
+
+func detectEmojiFallbackFontPaths() ([]string, error) {
+	searchDirs := fontSearchDirectories()
+	if len(searchDirs) == 0 {
+		return nil, fmt.Errorf("could not determine font search directories")
+	}
+
+	candidates := []string{
+		"NotoEmoji-Regular.ttf",
+		"NotoColorEmoji.ttf",
+		"DejaVuSans.ttf",
+		"DejaVuSansMono.ttf",
+		"Symbola.ttf",
+		"TwemojiMozilla.ttf",
+		"SegoeUIEmoji.ttf",
+		"Segoe UI Emoji.ttf",
+		"Apple Color Emoji.ttf",
+	}
+
+	patterns := []string{
+		"*Noto*Emoji*.ttf",
+		"*DejaVuSans*.ttf",
+		"*Symbola*.ttf",
+		"*Twemoji*.ttf",
+		"*Emoji*.ttf",
+	}
+
+	var paths []string
+	for _, candidate := range candidates {
+		if path, err := findFontFile(searchDirs, []string{candidate}, patterns); err == nil && path != "" {
+			paths = append(paths, path)
+		}
+	}
+
+	return paths, nil
 }
 
 type firaCodeFontPaths struct {
@@ -236,12 +291,21 @@ func loadFontFaceFromFile(path string, options *truetype.Options) (imgfont.Face,
 		return nil, fmt.Errorf("failed to read font file: %w", err)
 	}
 
-	ttf, err := truetype.Parse(content)
+	fontFile, err := opentype.Parse(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse font file: %w", err)
 	}
 
-	return truetype.NewFace(ttf, options), nil
+	face, err := opentype.NewFace(fontFile, &opentype.FaceOptions{
+		Size:    options.Size,
+		DPI:     options.DPI,
+		Hinting: 0,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create font face: %w", err)
+	}
+
+	return face, nil
 }
 
 func resolveFontFile(path string) (string, error) {

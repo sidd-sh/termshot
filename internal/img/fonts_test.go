@@ -61,3 +61,26 @@ func TestResolveFontFileFindsFontsInConfigDirectory(t *testing.T) {
 		t.Fatalf("expected %q, got %q", fontPath, resolved)
 	}
 }
+
+func TestRenderRuneUsesPlaceholderForUnsupportedEmoji(t *testing.T) {
+	path, err := resolveFontFile("DejaVuSans.ttf")
+	if err != nil {
+		t.Skipf("dejaVu Sans not available: %v", err)
+	}
+
+	face, err := loadFontFaceFromFile(path, &truetype.Options{Size: 24, DPI: 144})
+	if err != nil {
+		t.Fatalf("load dejavu sans font: %v", err)
+	}
+	if face == nil {
+		t.Fatal("expected font face")
+	}
+	if _, ok := face.GlyphAdvance('🌀'); ok {
+		t.Skip("font supports the emoji rune; placeholder fallback is not needed here")
+	}
+
+	scaffold := NewImageCreator()
+	if got := scaffold.renderRune('🌀', face); got != '?' {
+		t.Fatalf("expected placeholder rune, got %q", got)
+	}
+}
