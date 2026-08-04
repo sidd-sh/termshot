@@ -182,6 +182,8 @@ func detectEmojiFallbackFontPaths() ([]string, error) {
 	}
 
 	candidates := []string{
+  	"OpenMoji-black.ttf",
+    "OpenMoji-black-glyf.ttf",
 		"NotoEmoji-Regular.ttf",
 		"NotoColorEmoji.ttf",
 		"DejaVuSans.ttf",
@@ -194,6 +196,7 @@ func detectEmojiFallbackFontPaths() ([]string, error) {
 	}
 
 	patterns := []string{
+    "*OpenMoji*.ttf",
 		"*Noto*Emoji*.ttf",
 		"*DejaVuSans*.ttf",
 		"*Symbola*.ttf",
