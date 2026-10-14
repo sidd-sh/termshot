@@ -31,7 +31,6 @@ import (
 	"github.com/gonvenience/bunt"
 	"github.com/gonvenience/neat"
 
-	"github.com/homeport/termshot/internal/ansi"
 	"github.com/homeport/termshot/internal/highlight"
 	"github.com/homeport/termshot/internal/img"
 	"github.com/homeport/termshot/internal/ptexec"
@@ -301,28 +300,6 @@ window including all terminal colors and text decorations.
 			capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
 		}
 
-		// Use improved ANSI parser unless disabled
-		noImprovedANSI, _ := cmd.Flags().GetBool("no-improved-ansi")
-		if !noImprovedANSI && rawRead != "" {
-			// Only use improved parser for raw-read files, not for live commands
-			// Use a large default to avoid unwanted wrapping, unless --columns is explicitly set
-			columns := 500 // Large default to preserve line lengths
-			if explicitCols, err := cmd.Flags().GetInt("columns"); err == nil && explicitCols > 0 {
-				columns = explicitCols
-			}
-			vt := ansi.NewVirtualTerminal(columns)
-			parsed, err := vt.Parse(&buf)
-			if err != nil {
-				// If parsing fails, continue with original content
-				fmt.Fprintf(os.Stderr, "Warning: ANSI parsing failed, using original content: %v\n", err)
-			} else {
-				// Replace buffer content with parsed output
-				buf.Reset()
-				buf.WriteString(parsed.String())
-				capturedOutput = append(capturedOutput[:0], buf.Bytes()...)
-			}
-		}
-
 		//
 		if rawWrite != "" {
 			// For raw-write, temporarily disable column wrapping
@@ -500,6 +477,7 @@ func init() {
 
 	// flags for cursor handling
 	rootCmd.Flags().BoolP("no-improved-ansi", "n", false, "disable improved ANSI parser with cursor handling")
+	_ = rootCmd.Flags().MarkDeprecated("no-improved-ansi", "captured output is always processed by a terminal emulator now")
 	rootCmd.Flags().Bool("no-prompt-detect", false, "disable automatic prompt detection and command highlighting")
 
 	// internals

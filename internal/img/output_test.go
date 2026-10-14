@@ -22,6 +22,7 @@ package img_test
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -142,6 +143,69 @@ var _ = Describe("Creating images", func() {
 			err := scaffold.AddContent(panicReader{})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("panic while parsing input stream"))
+		})
+
+		It("should not fail on cursor movements beyond the line start", func() {
+			scaffold := NewImageCreator()
+			Expect(scaffold.AddContent(strings.NewReader("abc\x1b[10Ddef\x1b[D\x1b[999DX\n"))).To(Succeed())
+
+			var buf bytes.Buffer
+			Expect(scaffold.WriteRaw(&buf)).To(Succeed())
+			Expect(buf.String()).To(Equal("Xef\n"))
+		})
+
+		It("should not block on terminal queries in the output", func() {
+			done := make(chan struct{})
+			go func() {
+				defer GinkgoRecover()
+				defer close(done)
+
+				scaffold := NewImageCreator()
+				Expect(scaffold.AddContent(strings.NewReader("a\x1b[6nb\x1b[cc\n"))).To(Succeed())
+			}()
+
+			Eventually(done).Should(BeClosed())
+		})
+	})
+
+	Context("Terminal redraws in captured output", func() {
+		var raw = func(input string) string {
+			scaffold := NewImageCreator()
+			Expect(scaffold.AddContent(strings.NewReader(input))).To(Succeed())
+
+			var buf bytes.Buffer
+			Expect(scaffold.WriteRaw(&buf)).To(Succeed())
+			return buf.String()
+		}
+
+		It("should render a tab completion redraw as the final line only", func() {
+			input := "PS C:\\> Get-Ch" + "\r\n" +
+				"Get-ChildItem   Get-ChildHash\r\n" +
+				"Get-ChildThing\r\n" +
+				"\x1b[3A" + // cursor up 3
+				"\x1b[J" + // erase to end of screen
+				"\r" + "PS C:\\> Get-ChildItem"
+
+			Expect(raw(input)).To(Equal(`PS C:\> Get-ChildItem`))
+		})
+
+		It("should render only the final state of a carriage return overwritten line", func() {
+			Expect(raw("Loading |\rLoading /\rLoading -\rDone!     \nnext\n")).To(Equal("Done!\nnext\n"))
+		})
+
+		It("should keep output that scrolled off the screen", func() {
+			var input, expected strings.Builder
+			for i := 1; i <= 1000; i++ {
+				fmt.Fprintf(&input, "line %d\r\n", i)
+				fmt.Fprintf(&expected, "line %d\n", i)
+			}
+
+			Expect(raw(input.String())).To(Equal(expected.String()))
+		})
+
+		It("should keep the colors of plain colored output", func() {
+			Expect(raw("\x1b[1mbold\x1b[0m \x1b[38;2;10;20;30mrgb\x1b[0m\r\n")).
+				To(Equal("\x1b[1mbold\x1b[0m \x1b[38;2;10;20;30mrgb\x1b[0m\n"))
 		})
 	})
 })

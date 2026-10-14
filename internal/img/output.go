@@ -21,7 +21,6 @@
 package img
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -545,40 +544,15 @@ func (s *Scaffold) addContent(in io.Reader, enhance bool) (err error) {
 		return fmt.Errorf("failed to read input stream: %w", err)
 	}
 
-	parsed, err := bunt.ParseStream(bytes.NewReader(input))
-	if err != nil {
-		return fmt.Errorf("failed to parse input stream: %w", err)
-	}
+	// The emulator also takes care of line wrapping, if --columns was set
+	parsed := s.emulate(input)
 
 	if enhance {
 		// Check if this is raw input that might have a prompt at the start
-		parsed = s.enhanceRawContent(parsed)
+		parsed = *s.enhanceRawContent(&parsed)
 	}
 
-	var tmp bunt.String
-	var counter int
-	for _, cr := range *parsed {
-		counter++
-
-		if cr.Symbol == '\n' {
-			counter = 0
-		}
-
-		// Add an additional newline in case the column
-		// count is reached and line wrapping is needed
-		// Only wrap if --columns was explicitly set
-		if s.columns != 0 && counter > s.columns {
-			counter = 0
-			tmp = append(tmp, bunt.ColoredRune{
-				Settings: cr.Settings,
-				Symbol:   '\n',
-			})
-		}
-
-		tmp = append(tmp, cr)
-	}
-
-	s.content = append(s.content, tmp...)
+	s.content = append(s.content, parsed...)
 
 	return nil
 }
