@@ -252,7 +252,7 @@ func (s *Scaffold) colorizeToken(token highlight.Token) string {
 	}
 }
 
-// enhanceRawContent detects prompts and commands in raw content, adds spacing and highlighting
+// enhanceRawContent detects a prompt and command in raw content and highlights it
 func (s *Scaffold) enhanceRawContent(parsed *bunt.String) *bunt.String {
 	if len(*parsed) == 0 {
 		return parsed
@@ -300,37 +300,8 @@ func (s *Scaffold) enhanceRawContent(parsed *bunt.String) *bunt.String {
 	// Add the highlighted command
 	result = append(result, highlightedCommand...)
 
-	// Add a newline
-	result = append(result, bunt.ColoredRune{Symbol: '\n'})
-
-	// Check if there's any content after the command
-	hasOutputAfter := firstLineEnd+1 < len(*parsed)
-	if hasOutputAfter {
-		// Check if the next line is also a prompt (multiple commands)
-		nextLineStart := firstLineEnd + 1
-		if nextLineStart >= len(*parsed) {
-			return &result
-		}
-		nextLine := s.getLineAt(parsed, nextLineStart)
-		isNextPrompt := false
-
-		for _, indicator := range promptIndicators {
-			if strings.HasPrefix(nextLine, indicator) {
-				isNextPrompt = true
-				break
-			}
-		}
-
-		// Only add spacing if the next line is NOT another prompt or a wrapped continuation line.
-		if !isNextPrompt && strings.TrimSpace(nextLine) != "" && !strings.HasPrefix(nextLine, " ") && !strings.HasPrefix(nextLine, "\t") {
-			result = append(result, bunt.ColoredRune{Symbol: '\n'})
-		}
-	}
-
-	// Add the rest of the content (skip the original newline)
-	if hasOutputAfter {
-		result = append(result, (*parsed)[firstLineEnd+1:]...)
-	}
+	// Add the rest of the content as-is, including the original newline
+	result = append(result, (*parsed)[firstLineEnd:]...)
 
 	return &result
 }
@@ -343,18 +314,6 @@ func (s *Scaffold) getFirstLine(parsed *bunt.String) string {
 			break
 		}
 		line.WriteRune(cr.Symbol)
-	}
-	return line.String()
-}
-
-// getLineAt extracts a line starting from a specific position
-func (s *Scaffold) getLineAt(parsed *bunt.String, start int) string {
-	var line strings.Builder
-	for i := start; i < len(*parsed); i++ {
-		if (*parsed)[i].Symbol == '\n' {
-			break
-		}
-		line.WriteRune((*parsed)[i].Symbol)
 	}
 	return line.String()
 }
@@ -578,18 +537,13 @@ func (s *Scaffold) measureContent() (width float64, height float64) {
 	// temporary drawer for reference calucation
 	tmpDrawer := &imgfont.Drawer{Face: s.regular}
 
-	// width, either by using longest line, or by fixed column value
-	switch s.columns {
-	case 0: // unlimited: max width of all lines
-		for _, line := range lines {
-			advance := tmpDrawer.MeasureString(line)
-			if lineWidth := float64(advance >> 6); lineWidth > width {
-				width = lineWidth
-			}
+	// width of the longest line, lines are already wrapped at the configured
+	// column count, so the columns are the upper limit of the width
+	for _, line := range lines {
+		advance := tmpDrawer.MeasureString(line)
+		if lineWidth := float64(advance >> 6); lineWidth > width {
+			width = lineWidth
 		}
-
-	default: // fixed: max width based on column count
-		width = float64(tmpDrawer.MeasureString(strings.Repeat("a", s.columns)) >> 6)
 	}
 
 	// height, lines times font height and line spacing
@@ -730,8 +684,10 @@ func (s *Scaffold) image() (image.Image, error) {
 
 		switch str {
 		case "\n":
+			// Use the same line height as for measuring the content, the
+			// face chosen for the newline rune can be a fallback font
 			x = xOffset + paddingX
-			y += h * s.lineSpacing
+			y += s.fontHeight() * s.lineSpacing
 			continue
 
 		case "\t":

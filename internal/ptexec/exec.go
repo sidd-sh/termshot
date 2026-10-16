@@ -224,14 +224,8 @@ func (c *PseudoTerminal) pseudoTerminal(cmd *exec.Cmd) (*os.File, error) {
 
 	size, err := pty.GetsizeFull(os.Stdout)
 	if err != nil {
-		// Obtaining terminal size is prone to error in CI systems, e.g. in
-		// GitHub Action setup or similar, so only fail if CI is not set
-		if !isCI() {
-			return nil, fmt.Errorf("failed to get size: %w", err)
-		}
-
-		// For CI systems, assume a reasonable default even if the terminal
-		// size cannot be obtained through ioctl
+		// Obtaining the terminal size fails whenever stdout is not a terminal,
+		// e.g. in CI systems or scripts, assume a reasonable default instead
 		size = &pty.Winsize{Rows: 25, Cols: 80}
 	}
 
@@ -273,9 +267,4 @@ func copy(dst io.Writer, src io.Reader) error {
 func isTerminal(f *os.File) bool {
 	return isatty.IsTerminal(f.Fd()) ||
 		isatty.IsCygwinTerminal(f.Fd())
-}
-
-func isCI() bool {
-	ci, ok := os.LookupEnv("CI")
-	return ok && ci == "true"
 }

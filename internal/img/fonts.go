@@ -172,6 +172,10 @@ func (s *Scaffold) configureFallbackFonts(options *truetype.Options) error {
 		s.fallbacks = append(s.fallbacks, face)
 	}
 
+	// The embedded Hack font covers common prompt symbols (e.g. ❯, ➜, ✗),
+	// which keeps them from being replaced when no system font has them
+	s.fallbacks = append(s.fallbacks, font.Hack.Regular(options))
+
 	return nil
 }
 

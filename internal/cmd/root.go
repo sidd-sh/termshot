@@ -22,11 +22,14 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gonvenience/bunt"
 	"github.com/gonvenience/neat"
@@ -41,6 +44,12 @@ import (
 
 // version string will be injected by automation
 var version string
+
+// defaultColumns is the default number of columns after which content wraps
+const defaultColumns = 100
+
+// rawWriteAuto is the raw-write flag value used when no filename is given
+const rawWriteAuto = "auto"
 
 // saveToClipboard function will be implemented by OS specific code
 var saveToClipboard func(img.Scaffold) error
@@ -71,8 +80,66 @@ window including all terminal colors and text decorations.
 			return nil
 		}
 
+		// Manage the defaults in the config file
+		setDefaults, _ := cmd.Flags().GetStringArray("set-default")
+		unsetDefaults, _ := cmd.Flags().GetStringArray("unset-default")
+		if len(setDefaults) > 0 || len(unsetDefaults) > 0 {
+			path, err := updateConfigFlags(cmd.Flags(), setDefaults, unsetDefaults)
+			if err != nil {
+				return fmt.Errorf("failed to update config file: %w", err)
+			}
+
+			bunt.Printf("Updated config file DimGray{%s}\n", path)
+			return nil
+		}
+
+		// Create a config file with the default settings on first use
+		configPath, created, err := ensureGlobalConfig(cmd.Flags())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to create default config file: %v\n", err)
+		} else if created {
+			fmt.Fprintf(os.Stderr, "Created default config file %s\n", configPath)
+		}
+
+		if showConfig, _ := cmd.Flags().GetBool("show-config"); showConfig {
+			content, err := os.ReadFile(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to read config file: %w", err)
+			}
+
+			bunt.Printf("DimGray{# %s}\n", configPath)
+			fmt.Print(string(content))
+			return nil
+		}
+
+		globalConfig, err := loadGlobalConfig()
+		if err != nil {
+			return err
+		}
+
+		if err := applyConfigFlags(cmd.Flags(), globalConfig); err != nil {
+			return err
+		}
+
 		rawRead, _ := cmd.Flags().GetString("raw-read")
 		rawWrite, _ := cmd.Flags().GetString("raw-write")
+
+		// The filename for raw-write is optional, which means that a filename
+		// separated by a space ends up as first argument, use it as filename if
+		// that is unambiguous (separated command or no command expected at all)
+		if rawWrite == rawWriteAuto && len(args) > 0 &&
+			(cmd.ArgsLenAtDash() == 1 || (rawRead != "" && len(args) == 1)) {
+			rawWrite, args = args[0], args[1:]
+		}
+
+		if rawWrite == rawWriteAuto {
+			rawWrite, err = rawWriteFilename()
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stderr, "Writing raw output to %s\n", rawWrite)
+		}
 
 		if len(args) == 0 && rawRead == "" {
 			return cmd.Usage()
@@ -98,11 +165,6 @@ window including all terminal colors and text decorations.
 		fontBold, _ := cmd.Flags().GetString("font-bold")
 		fontItalic, _ := cmd.Flags().GetString("font-italic")
 		fontBoldItalic, _ := cmd.Flags().GetString("font-bold-italic")
-
-		globalConfig, err := loadGlobalConfig()
-		if err != nil {
-			return err
-		}
 
 		fontConfig := img.FontConfig{
 			Name:           fontName,
@@ -423,6 +485,17 @@ func executableName() string {
 	return "termshot"
 }
 
+// rawWriteFilename returns a raw-write filename in the format
+// <timestamp>-<4 random bytes as hex>.log
+func rawWriteFilename() (string, error) {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", fmt.Errorf("failed to generate raw-write filename: %w", err)
+	}
+
+	return fmt.Sprintf("%s-%s.log", time.Now().Format("20060102-150405"), hex.EncodeToString(suffix[:])), nil
+}
+
 func readFile(name string) ([]byte, error) {
 	switch name {
 	case "-":
@@ -441,7 +514,7 @@ func init() {
 
 	// flags to control look
 	rootCmd.Flags().BoolP("show-cmd", "c", false, "include command in screenshot")
-	rootCmd.Flags().IntP("columns", "C", 0, "force fixed number of columns in screenshot")
+	rootCmd.Flags().IntP("columns", "C", defaultColumns, "wrap screenshot content after this number of columns (0 to disable)")
 	rootCmd.Flags().Bool("no-decoration", false, "do not draw window decorations")
 	rootCmd.Flags().Bool("no-shadow", false, "do not draw window shadow")
 	rootCmd.Flags().BoolP("clip-canvas", "s", false, "clip canvas to visible image area (no margin)")
@@ -472,13 +545,19 @@ func init() {
 	rootCmd.Flags().StringP("filename", "f", "", "filename of the screenshot (auto-generated if not specified)")
 
 	// flags for raw output processing
-	rootCmd.Flags().StringP("raw-write", "w", "", "write raw output to file instead of creating a screenshot")
+	rootCmd.Flags().StringP("raw-write", "w", "", "write raw output to file instead of creating a screenshot (default name: <timestamp>-<random>.log)")
+	rootCmd.Flags().Lookup("raw-write").NoOptDefVal = rawWriteAuto
 	rootCmd.Flags().StringP("raw-read", "r", "", "read raw input from file instead of executing a command")
 
 	// flags for cursor handling
 	rootCmd.Flags().BoolP("no-improved-ansi", "n", false, "disable improved ANSI parser with cursor handling")
 	_ = rootCmd.Flags().MarkDeprecated("no-improved-ansi", "captured output is always processed by a terminal emulator now")
 	rootCmd.Flags().Bool("no-prompt-detect", false, "disable automatic prompt detection and command highlighting")
+
+	// flags for the config file
+	rootCmd.Flags().StringArray("set-default", []string{}, "store a flag default in the config file, e.g. --set-default theme=nord (repeatable)")
+	rootCmd.Flags().StringArray("unset-default", []string{}, "remove a flag default from the config file (repeatable)")
+	rootCmd.Flags().Bool("show-config", false, "show the config file location and content")
 
 	// internals
 	rootCmd.Flags().BoolP("version", "v", false, "show version")
