@@ -1,340 +1,66 @@
 # termshot
 
-[![License](https://img.shields.io/github/license/homeport/termshot.svg)](https://github.com/homeport/termshot/blob/main/LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/homeport/termshot)](https://goreportcard.com/report/github.com/homeport/termshot)
-[![Tests](https://github.com/homeport/termshot/workflows/Tests/badge.svg)](https://github.com/homeport/termshot/actions?query=workflow%3A%22Tests%22)
-[![Codecov](https://img.shields.io/codecov/c/github/homeport/termshot/main.svg)](https://codecov.io/gh/homeport/termshot)
-[![Go Reference](https://pkg.go.dev/badge/github.com/homeport/termshot.svg)](https://pkg.go.dev/github.com/homeport/termshot)
-[![Release](https://img.shields.io/github/release/homeport/termshot.svg)](https://github.com/homeport/termshot/releases/latest)
+A fork of [homeport/termshot](https://github.com/homeport/termshot) with more customisability (themes, fonts, prompts, config file defaults) and stable parsing of interactive terminal output.
 
-## Fork Improvements
-
-This fork adds several enhancements:
-- **8 built-in themes** (catppuccin-mocha, nord, dracula, etc.) + custom theme support
-- **Custom font configuration** with `FiraCode Mono` as the default font family
-- **Shell configuration** support (--shell, --shell-config, --shell-opts)
-- **Improved ANSI parsing** enabled by default for better cursor handling (use -n to disable)
-- **Recovery dumps on parser/render panics** so captured terminal output is not lost
-- **Syntax highlighting** enabled by default for commands (use --no-syntax-highlight to disable)
-- **Smart filename generation** from input file or timestamp instead of out.png to avoid overwriting your screenshots.
-- **Shorthand flags**: -r (raw-read), -w (raw-write), -n (no-improved-ansi)
-- **--no-prompt-detect** flag for interactive shells with autosuggestions
-
-Generate beautiful screenshots of your terminal, from your terminal.
+Prefix any command with `termshot` and get a PNG of its output, rendered with the colours your terminal would show.
 
 ```sh
-termshot lolcat -f <(figlet -f big termshot)
+termshot -c -- "ls --color=always -p"
 ```
 
-This command generates this screenshot:
+![termshot example](docs/images/show-cmd.png)
 
-![example](.doc/example-cmd-figlet.png)
+## What this fork adds
 
-## Installation
+- **Stable parsing**: captured output runs through a real terminal emulator ([charmbracelet/x/vt](https://github.com/charmbracelet/x/tree/main/vt)), so tab completion, prompt redraws and spinners render as their final state, without crashes or garbage lines.
+- **Themes and fonts**: 8 built-in themes, custom theme files, Fira Code by default, custom font files.
+- **Config file**: generated on first run, so any flag can get a persistent default.
+- **Syntax highlighting** of the command, custom prompt, shell selection.
+- **Sensible defaults**: wraps at 100 columns, auto-named output files.
 
-To install with Homebrew on macOS or Linux:
+## Install
+
+Grab the prebuilt Linux binary from [`bin/termshot`](bin/termshot), or build it yourself:
 
 ```sh
-brew install homeport/tap/termshot
+git clone https://github.com/sidd-sh/termshot && cd termshot
+go build -o termshot ./cmd/termshot
 ```
-
-See [Releases](https://github.com/homeport/termshot/releases/) for pre-compiled binaries for Darwin and Linux.
 
 ## Usage
 
-This tool reads the console output and renders an output image that resembles a user interface window. It's inspired by some other web-based tools like [carbon.now.sh](https://carbon.now.sh/), and [codekeep.io/screenshot](https://codekeep.io/screenshot). Unlike those tools, `termshot` does not blindly apply syntax highlighting to some provided text; instead it reads the ANSI escape codes ("rich text") logged by most command-line tools and uses it to generate a high-fidelity "screenshot" of your terminal output.
+```sh
+termshot [termshot flags] -- <command> [args]
+```
 
-Like `time`, `watch`, or `perf`, just prefix the command you want to screenshot with `termshot`.
+Wrap commands with pipes or quotes in double quotes: `termshot -- "ls -1 | grep go"`.
+
+| Flag | Purpose |
+|---|---|
+| `-c`, `--show-cmd` | Include the command in the screenshot |
+| `-C`, `--columns` | Wrap after N columns (default `100`, `0` disables) |
+| `--theme`, `--theme-file` | Built-in or custom JSON theme |
+| `--font`, `--font-size`, `--font-regular` … | Font family, size, or font files |
+| `--prompt`, `--no-syntax-highlight` | Prompt symbol, command highlighting |
+| `--no-decoration`, `--no-shadow`, `-s` | Window chrome, shadow, clip canvas |
+| `-f`, `--filename` | Output PNG (default: `termshot-<pid>.png`) |
+| `-w`, `--raw-write` | Save raw output instead (default name: `<timestamp>-<random>.log`) |
+| `-r`, `--raw-read` | Screenshot a saved raw output file |
+| `--shell`, `--shell-config`, `--shell-opts` | Shell used to run the command |
+| `-e`, `--edit` | Edit the output in `$EDITOR` first |
+
+See [EXAMPLES.md](EXAMPLES.md) for every option with a screenshot.
+
+## Config
+
+On first run termshot writes all configurable flags with their defaults to `~/.config/termshot/config.json` (or `%AppData%\termshot\config.json` on Windows). Set `TERMSHOT_CONFIG` to use a different file. Flags given on the command line always win.
 
 ```sh
-termshot ls -a
+termshot --set-default theme=nord --set-default no-shadow=true
+termshot --unset-default theme
+termshot --show-config
 ```
 
-This will generate an image file called `out.png` in the current directory.
+## Credits
 
-![basic termshot](.doc/example-cmd-ls-a.png)
-
-In some cases, if your target command contains _pipes_—there may still be ambiguity, even with `--`. In these cases, wrap your command in double quotes.
-
-```sh
-termshot -- "ls -1 | grep go"
-```
-
-![termshot with pipes](.doc/example-cmd-ls-pipe-grep.png)
-
-### Flags to control the look
-
-#### `--show-cmd`/`-c`
-
-Include the target command in the screenshot.
-
-```sh
-termshot --show-cmd -- "ls -a"
-```
-
-![termshot that shows command](.doc/example-cmd-ls-a.png)
-
-#### `--columns`/`-C`
-
-Enforce that screenshot is wrapped after the provided number of columns. Use this flag to make sure that the screenshot does not exceed a certain horizontal length.
-
-#### `--no-decoration`
-
-Do not draw window decorations (minimize, maximize, and close button).
-
-#### `--no-shadow`
-
-Do not draw window shadow.
-
-#### `--theme`
-
-Specify a color theme for the terminal screenshot. Built-in themes include:
-- `default` - Default theme
-- `catppuccin-mocha` - Catppuccin Mocha theme
-- `catppuccin-latte` - Catppuccin Latte theme
-- `nord` - Nord theme
-- `dracula` - Dracula theme
-- `tokyo-night` - Tokyo Night theme
-- `gruvbox-dark` - Gruvbox Dark theme
-- `solarized-dark` - Solarized Dark theme
-
-```sh
-termshot --theme catppuccin-mocha -- "ls -a"
-```
-
-#### `--theme-file`
-
-Load a custom theme from a JSON file. The JSON file should define colors for background, foreground, window decorations, and ANSI colors.
-
-```sh
-termshot --theme-file my-theme.json -- "ls -a"
-```
-
-#### `--prompt`
-
-Customize the command prompt indicator (default is "❯").
-
-```sh
-termshot --show-cmd --prompt "❯" -- "ls -a"
-```
-
-#### `--font`
-
-Set the font family used for rendering terminal text. Supported built-in values:
-- `firacode-mono` (default)
-- `hack`
-- `go-mono`
-
-```sh
-termshot --font hack -- "ls -a"
-```
-
-#### `--font-size` and `--font-dpi`
-
-Adjust font rendering size and DPI.
-
-```sh
-termshot --font-size 13 --font-dpi 144 -- "ls -a"
-```
-
-#### `--font-regular`, `--font-bold`, `--font-italic`, `--font-bold-italic`
-
-Load custom font files. `--font-regular` is required when using custom font files; missing style variants fall back to the regular/bold file. Font file names are resolved against the current directory, `~/.config/termshot`, `~/.config/termshot/fonts`, and `~/.local/share/fonts`.
-
-```sh
-termshot \
-  --font-regular "C:\Windows\Fonts\FiraCode-Regular.ttf" \
-  --font-bold "C:\Windows\Fonts\FiraCode-Bold.ttf" \
-  -- "ls -a"
-```
-
-#### Global configuration
-
-`termshot` reads optional defaults from `~/.config/termshot/config.json`. A minimal example looks like this:
-
-```json
-{
-  "font": {
-    "name": "hack",
-    "size": 13,
-    "dpi": 144,
-    "regular_path": "Goregular.ttf"
-  }
-}
-```
-
-If a font file name is provided instead of a full path, `termshot` will look for it in the current directory, the config directory, and the user font directory under `~/.local/share/fonts`.
-
-#### `--no-syntax-highlight`
-
-Disable syntax highlighting for the command line (enabled by default).
-
-```sh
-termshot --show-cmd --no-syntax-highlight -- "docker ps"
-```
-
-### Flags for output related settings
-
-#### `--clipboard`/`-b` (only on selected platforms)
-
-Do not create an output file with the screenshot, but save the screenshot image into the operating system clipboard.
-
-_Note:_ Only available on some platforms. Check `termshot` help to see if flag is available.
-
-#### `--filename`/`-f`
-
-Specify a path where the screenshot should be generated. This can be an absolute path or a relative path; relative paths will be resolved relative to the current working directory. Defaults to `out.png`.
-
-```sh
-termshot -- "ls -a" # defaults to <cwd>/out.png
-termshot --filename my-image.png -- "ls -a"
-termshot --filename screenshots/my-image.png -- "ls -a"
-termshot --filename /Desktop/my-image.png -- "ls -a"
-```
-
-### Flags for shell configuration
-
-#### `--shell`
-
-Specify a custom shell to use for command execution (e.g., `/bin/zsh`, `/bin/bash`).
-
-```sh
-termshot --shell /bin/zsh -- "ls -a"
-```
-
-#### `--shell-config`
-
-Specify a shell configuration file to source before running the command (e.g., `~/.zshrc`, `~/.bashrc`). This is useful for loading custom prompts like powerlevel10k.
-
-```sh
-termshot --shell /bin/zsh --shell-config ~/.zshrc -- "ls -a"
-```
-
-#### `--shell-opts`
-
-Specify additional shell options as a comma-separated list.
-
-```sh
-termshot --shell /bin/zsh --shell-opts "-i,-l" -- "ls -a"
-```
-
-### Flags to control content
-
-#### `--edit`/`-e`
-
-Edit the output before generating the screenshot. This will open the rich text output in the editor configured in `$EDITOR`, using `vi` as a fallback. Use this flag to remove unwanted or sensitive output.
-
-```sh
-termshot --edit -- "ls -a"
-```
-
-### Miscellaneous flags
-
-#### `--raw-write`/`-w` <file>
-
-Write command output as-is into the file that is specified as the flag argument. No screenshot is being created. The command-line flag `--filename` has no effect, when `--raw-write` is used.
-
-#### `--raw-read`/`-r` <file>
-
-Read input from provided file instead of running a command. If this flag is being used, no pseudo terminal is being created to execute a command. The command-line flags `--show-cmd`, and `--edit` have no effect, when `--raw-read` is used. Output filename defaults to the input filename with .png extension.
-
-#### `--no-improved-ansi`/`-n`
-
-Disable improved ANSI parser with cursor handling (enabled by default for --raw-read).
-
-```sh
-termshot -r input.log -n -o output.png
-```
-
-If termshot encounters malformed terminal data and hits an internal panic while parsing/rendering, it now writes a recovery copy of captured output to:
-- Linux/macOS: `<user-cache-dir>/termshot/recovery/`
-- Windows: `%LocalAppData%\termshot\recovery\`
-
-#### `--version`/`-v`
-
-Print the version of `termshot` installed.
-
-```sh
-$ termshot --version
-termshot version 0.2.5-sidd.sh1
-```
-
-### Multiple commands
-
-In order to work, `termshot` uses a pseudo terminal for the command to be executed. For advanced use cases, you can invoke a fully interactive shell, run several commands, and capture the entire output. The screenshot will be created once you terminate the shell.
-
-```sh
-termshot /bin/zsh
-```
-
-> _Please note:_ This project is work in progress. The improved ANSI parser now handles most cursor positioning sequences, including those used by powerlevel10k and similar prompts. You can customize the appearance with themes, custom prompts, and syntax highlighting.
-
-## Advanced Examples
-
-### Using with ZSH and custom config
-
-```sh
-termshot --shell /bin/zsh --shell-config ~/.zshrc --theme catppuccin-mocha --show-cmd -- "git status"
-```
-
-### Quick screenshot from saved output
-
-```sh
-# Save terminal output
-termshot -w session.log /bin/zsh
-
-# Generate screenshot later (auto-names as session.png)
-termshot -r session.log --theme catppuccin-mocha
-```
-
-### Custom prompt and syntax highlighting
-
-```sh
-termshot --show-cmd --prompt "❯" -- "docker ps -a | grep running"
-```
-
-### Disable default features
-
-```sh
-# Disable syntax highlighting and ANSI improvements
-termshot --no-syntax-highlight -n -r input.log
-```
-
-### Creating a custom theme
-
-Create a JSON file (e.g., `my-theme.json`):
-
-```json
-{
-  "name": "My Theme",
-  "background": "#1e1e2e",
-  "foreground": "#cdd6f4",
-  "window_red": "#f38ba8",
-  "window_yellow": "#f9e2af",
-  "window_green": "#a6e3a1",
-  "window_border": "#45475a",
-  "shadow": "#11111b66",
-  "black": "#45475a",
-  "red": "#f38ba8",
-  "green": "#a6e3a1",
-  "yellow": "#f9e2af",
-  "blue": "#89b4fa",
-  "magenta": "#f5c2e7",
-  "cyan": "#94e2d5",
-  "white": "#bac2de",
-  "bright_black": "#585b70",
-  "bright_red": "#f38ba8",
-  "bright_green": "#a6e3a1",
-  "bright_yellow": "#f9e2af",
-  "bright_blue": "#89b4fa",
-  "bright_magenta": "#f5c2e7",
-  "bright_cyan": "#94e2d5",
-  "bright_white": "#a6adc8"
-}
-```
-
-Then use it:
-
-```sh
-termshot --theme-file my-theme.json -- "ls -la"
-```
+Based on [termshot](https://github.com/homeport/termshot) by the Homeport team, MIT licensed, see [LICENSE](LICENSE).
